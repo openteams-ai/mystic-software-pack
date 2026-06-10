@@ -6,5 +6,5 @@ description: >
   NebariApp routing is provisioned for custody-agent (8080) and custody-demo-ui
   (8060); custody-tools (8090) and custody-fault-proxy (8085) are cluster-internal.
 type: application
-version: 0.1.0
+version: 0.2.0
 appVersion: "0.1.0"

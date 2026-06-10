@@ -31,6 +31,17 @@ nebariapp:
         - profile
         - email
     # publicRoutes: paths that bypass Keycloak (healthz stays open for checkmaite probes)
+    # No explicit routes list needed — omitting routes means all hostname traffic routes
+    # to the service.  Covered paths include:
+    #   /v1/custody/runs/*/events  — SSE/WebSocket run-event stream (live UI)
+    #   /live                      — live-view landing page
+    #   /static-live/*             — live-view static assets
+    #   /runs/*                    — per-run artifact viewer
+    # WebSocket upgrade passthrough: Envoy Gateway HTTPRoutes carry the Connection
+    # and Upgrade headers through by default (Gateway API HTTPRoute spec §7.3 does
+    # not strip hop-by-hop headers at the route level; Envoy Gateway's xDS
+    # translation preserves them).  The NebariApp CRD has no websocket/upgrade
+    # field — passthrough is implicit.  No extra chart config required.
     routing:
       publicRoutes:
         - pathPrefix: /healthz
@@ -77,6 +88,24 @@ common:
   dataBucket: custody-demo-data
 
 # =============================================================================
+# Run-artifacts volume (custody-agent)
+# =============================================================================
+# The agent writes run artifacts (event logs, evidence bundles) to
+# CUSTODY_RUN_ARTIFACTS (/data/artifacts).  By default an emptyDir is used
+# (ephemeral, survives pod restarts within the same node).  For durable storage
+# supply a PVC name:
+#
+#   artifacts:
+#     persistentVolumeClaim:
+#       claimName: custody-artifacts-pvc
+#
+# The chart mounts this volume into custody-agent only (other services do not
+# write artifacts).
+artifacts:
+  # persistentVolumeClaim:
+  #   claimName: ""   # set to a pre-existing PVC to persist artifacts across pod restarts
+
+# =============================================================================
 # GPU scheduling (for custody-tools when gpu=true)
 # =============================================================================
 gpu:
@@ -114,6 +143,8 @@ services:
       - name: TOOLS_BASE_URL
         # agent ALWAYS calls the fault proxy — contract §4
         value: http://custody-fault-proxy.nebari-custody-demo-pack.svc:8085
+      - name: CUSTODY_RUN_ARTIFACTS
+        value: /data/artifacts
     resources:
       requests:
         cpu: 250m

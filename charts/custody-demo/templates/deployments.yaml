@@ -2,6 +2,10 @@
   One Deployment per service entry in .Values.services.
   GPU scheduling (nodeSelector + tolerations) applied when svc.gpu=true.
   Image swap is values-only: set services.<name>.image.repository + tag + args.
+
+  custody-agent gets a run-artifacts volume mounted at /data/artifacts.
+  Default is emptyDir; supply .Values.artifacts.persistentVolumeClaim.claimName
+  for a durable PVC.
 */}}
 {{- range $name, $svc := .Values.services }}
 ---
@@ -36,6 +40,16 @@ spec:
       tolerations:
         {{- toYaml $.Values.gpu.tolerations | nindent 8 }}
       {{- end }}
+      {{- if eq $name "custody-agent" }}
+      volumes:
+        - name: run-artifacts
+          {{- if and $.Values.artifacts $.Values.artifacts.persistentVolumeClaim $.Values.artifacts.persistentVolumeClaim.claimName }}
+          persistentVolumeClaim:
+            claimName: {{ $.Values.artifacts.persistentVolumeClaim.claimName }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+      {{- end }}
       containers:
         - name: {{ $name }}
           image: "{{ $svc.image.repository }}:{{ $svc.image.tag }}"
@@ -61,6 +75,11 @@ spec:
             - secretRef:
                 name: {{ . }}
             {{- end }}
+          {{- end }}
+          {{- if eq $name "custody-agent" }}
+          volumeMounts:
+            - name: run-artifacts
+              mountPath: /data/artifacts
           {{- end }}
           readinessProbe:
             httpGet:

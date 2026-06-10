@@ -3,6 +3,39 @@
 Nebari software pack repository for the **Mystic LOE-1 demo stack** — four
 template-conformant Helm charts, one ArgoCD repo, four chart paths.
 
+## Changelog
+
+### charts/custody-demo v0.2.0 (2026-06-10)
+
+- **run-artifacts volume** — custody-agent Deployment now mounts a `run-artifacts`
+  volume at `/data/artifacts`.  The env var `CUSTODY_RUN_ARTIFACTS=/data/artifacts`
+  is wired into the container automatically.  Default is `emptyDir` (ephemeral);
+  set `artifacts.persistentVolumeClaim.claimName` in values to attach a pre-existing
+  PVC for durable storage across pod restarts.
+
+- **Live-UI routing confirmation** — the custody-agent NebariApp omits a `routes`
+  list deliberately.  Per the CRD spec, omitting `routing.routes` routes all traffic
+  for the hostname to the service (not just listed prefixes).  The following paths
+  are therefore already covered by the agent route with no additional config needed:
+  - `/v1/custody/runs/*/events` — SSE/WebSocket run-event stream
+  - `/live` — live-view landing page
+  - `/static-live/*` — live-view static assets
+  - `/runs/*` — per-run artifact viewer
+  `/healthz` remains a `publicRoute` (Keycloak bypass) for checkmaite probes.
+
+- **WebSocket upgrade passthrough** — Envoy Gateway HTTPRoutes preserve `Connection`
+  and `Upgrade` headers by default.  The Gateway API HTTPRoute specification (§7.3)
+  does not require stripping hop-by-hop headers, and Envoy Gateway's xDS translation
+  passes them through.  The NebariApp CRD (`reconcilers.nebari.dev/v1 v0.1.0-alpha.19`)
+  has no `webSocket` or `upgrade` field — WS upgrade passthrough is implicit and
+  requires no extra chart configuration.  If a future operator version adds an
+  explicit `routing.websocket` toggle, set it to `true` on `nebariapp.agent`.
+
+### charts/custody-demo v0.1.0 (initial)
+
+- Initial four-service chart (custody-agent, custody-tools, custody-fault-proxy,
+  custody-demo-ui) with stub images and NebariApp routing for agent + UI.
+
 ## Chart matrix
 
 | Chart | Namespace | Services | NebariApp | Notes |
