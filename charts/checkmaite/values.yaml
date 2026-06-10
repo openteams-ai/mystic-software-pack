@@ -1,0 +1,101 @@
+# Default values for checkmaite
+# This is a YAML-formatted file.
+
+# =============================================================================
+# Nebari Integration
+# =============================================================================
+# Creates a NebariApp CRD for checkmaite-serve routing + Keycloak SSO.
+# Set enabled: true when deploying on a Nebari cluster.
+nebariapp:
+  enabled: false
+  # hostname: checkmaite.custody.demo.openteams.com  # Required when enabled
+  service:
+    name: checkmaite
+    port: 5006
+  auth:
+    enabled: true
+    provider: keycloak
+    provisionClient: true
+    scopes:
+      - openid
+      - profile
+      - email
+  gateway: public
+
+# =============================================================================
+# Application image
+# =============================================================================
+image:
+  # repository: <ECR>/checkmaite  # Required — must be injected per-deployment
+  repository: ""
+  tag: "0.1.0"
+  pullPolicy: IfNotPresent
+
+# =============================================================================
+# Service Account (IRSA for S3 access to custody-demo-data)
+# =============================================================================
+serviceAccount:
+  name: checkmaite
+  # irsaRoleArn: arn:aws:iam::<account>:role/custody-demo-data-irsa
+  irsaRoleArn: ""
+
+# =============================================================================
+# Analytics PVC (EFS, RWX — contract §9: /data/analytics)
+# =============================================================================
+analytics:
+  storageClassName: efs-sc
+  size: 50Gi
+  mountPath: /data/analytics
+
+# =============================================================================
+# Langfuse credentials (secret reference — keys injected from K8s Secret)
+# =============================================================================
+langfuse:
+  # K8s Secret in this namespace with LANGFUSE_PUBLIC_KEY / LANGFUSE_SECRET_KEY
+  # (contract §9: Secret name "langfuse-keys")
+  secretName: langfuse-keys
+  host: http://langfuse-web.nebari-langfuse-pack.svc:3000
+
+# =============================================================================
+# Endpoint wiring (contract §9 / §7 / §10)
+# =============================================================================
+endpoints:
+  sutBaseUrl: http://custody-agent.nebari-custody-demo-pack.svc:8080
+  # Agent calls the fault proxy; plugin calls tools directly for evidence crops (§9)
+  toolsBaseUrl: http://custody-fault-proxy.nebari-custody-demo-pack.svc:8085
+  judgeBaseUrl: http://judge.nebari-judge-pack.svc:8000/v1
+  otelExporterOtlpEndpoint: http://otel-collector.opentelemetry.svc:4318
+
+# =============================================================================
+# S3
+# =============================================================================
+s3:
+  bucket: custody-demo-data
+
+# =============================================================================
+# Nightly evaluation CronJob (disabled until Team 3's plugin is baked in)
+# =============================================================================
+nightlyEval:
+  enabled: false
+  schedule: "0 6 * * *"
+  # Scenario(s) to run nightly — single value; use CLI --scenario for multi
+  scenario: A-baseline
+  modelId: claude-sonnet-4-6
+  benchmarksRepo: https://github.com/openteams/custody-benchmarks.git
+
+# =============================================================================
+# Resources
+# =============================================================================
+resources:
+  requests:
+    cpu: "1"
+    memory: 2Gi
+  limits:
+    cpu: "4"
+    memory: 8Gi
+
+# =============================================================================
+# Overrides
+# =============================================================================
+nameOverride: ""
+fullnameOverride: ""

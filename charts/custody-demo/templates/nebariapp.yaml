@@ -1,0 +1,90 @@
+{{/*
+  NebariApp Custom Resources — custody-agent and custody-demo-ui
+  ---------------------------------------------------------------
+  This chart adapts the single-app NebariApp template pattern to a multi-service
+  chart.  Two NebariApp resources are rendered (one per externally-routed service)
+  when nebariapp.enabled=true.  custody-tools and custody-fault-proxy are
+  cluster-internal and intentionally have no NebariApp.
+
+  See README.md §Multi-service NebariApp adaptation for the design note.
+
+  apiVersion / kind follow the template canonical form:
+    reconcilers.nebari.dev/v1 / NebariApp
+  (NOT the older nebari.dev/v1alpha1 / NebariApplication from ADR-0003-era plans)
+*/}}
+{{- if .Values.nebariapp.enabled }}
+---
+apiVersion: reconcilers.nebari.dev/v1
+kind: NebariApp
+metadata:
+  name: custody-agent
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "custody-demo.labels" . | nindent 4 }}
+spec:
+  hostname: {{ required "nebariapp.agent.hostname is required when nebariapp.enabled is true" .Values.nebariapp.agent.hostname }}
+  service:
+    name: {{ .Values.nebariapp.agent.service.name | default "custody-agent" }}
+    port: {{ .Values.nebariapp.agent.service.port | default 8080 }}
+  {{- with .Values.nebariapp.agent.routing }}
+  routing:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with .Values.nebariapp.agent.auth }}
+  auth:
+    enabled: {{ .enabled | default false }}
+    provider: {{ .provider | default "keycloak" }}
+    provisionClient: {{ .provisionClient | default true }}
+    {{- with .redirectURI }}
+    redirectURI: {{ . }}
+    {{- end }}
+    {{- with .scopes }}
+    scopes:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
+    {{- with .groups }}
+    groups:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
+  {{- end }}
+  {{- with .Values.nebariapp.agent.gateway }}
+  gateway: {{ . }}
+  {{- end }}
+---
+apiVersion: reconcilers.nebari.dev/v1
+kind: NebariApp
+metadata:
+  name: custody-demo-ui
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "custody-demo.labels" . | nindent 4 }}
+spec:
+  hostname: {{ required "nebariapp.ui.hostname is required when nebariapp.enabled is true" .Values.nebariapp.ui.hostname }}
+  service:
+    name: {{ .Values.nebariapp.ui.service.name | default "custody-demo-ui" }}
+    port: {{ .Values.nebariapp.ui.service.port | default 8060 }}
+  {{- with .Values.nebariapp.ui.routing }}
+  routing:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with .Values.nebariapp.ui.auth }}
+  auth:
+    enabled: {{ .enabled | default false }}
+    provider: {{ .provider | default "keycloak" }}
+    provisionClient: {{ .provisionClient | default true }}
+    {{- with .redirectURI }}
+    redirectURI: {{ . }}
+    {{- end }}
+    {{- with .scopes }}
+    scopes:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
+    {{- with .groups }}
+    groups:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
+  {{- end }}
+  {{- with .Values.nebariapp.ui.gateway }}
+  gateway: {{ . }}
+  {{- end }}
+{{- end }}

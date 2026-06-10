@@ -1,0 +1,43 @@
+{{ include "checkmaite.fullname" . }} has been deployed (release: {{ .Release.Name }}).
+
+Service: checkmaite-serve on port {{ .Values.nebariapp.service.port | default 5006 }}
+Analytics PVC: checkmaite-analytics ({{ .Values.analytics.size }}, {{ .Values.analytics.storageClassName }})
+  Mounted at: {{ .Values.analytics.mountPath }}
+
+{{- if .Values.nebariapp.enabled }}
+
+NebariApp is ENABLED. The nebari-operator will configure:
+  - HTTPRoute for hostname: {{ .Values.nebariapp.hostname }}
+  {{- if .Values.nebariapp.auth.enabled }}
+  - OIDC authentication via {{ .Values.nebariapp.auth.provider }}
+  {{- end }}
+
+Check NebariApp status:
+  kubectl get nebariapp {{ include "checkmaite.fullname" . }} -n {{ .Release.Namespace }}
+
+{{- else }}
+
+NebariApp is DISABLED. To access the service locally:
+  kubectl port-forward svc/{{ include "checkmaite.fullname" . }} 5006:{{ .Values.nebariapp.service.port | default 5006 }} -n {{ .Release.Namespace }}
+
+Enable Nebari routing:
+  --set nebariapp.enabled=true \
+  --set nebariapp.hostname=checkmaite.custody.demo.example.com \
+  --set image.repository=<ECR>/checkmaite
+
+{{- end }}
+
+{{- if .Values.nightlyEval.enabled }}
+
+Nightly CronJob: checkmaite-nightly-smoke ({{ .Values.nightlyEval.schedule }})
+  Runs scenario {{ .Values.nightlyEval.scenario }} with model {{ .Values.nightlyEval.modelId }}
+  Force-trigger: kubectl create job --from=cronjob/checkmaite-nightly-smoke smoke-manual -n {{ .Release.Namespace }}
+
+{{- else }}
+
+Nightly CronJob: DISABLED (set nightlyEval.enabled=true to enable)
+
+{{- end }}
+
+Required K8s Secrets:
+  {{ .Values.langfuse.secretName }}  — LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY

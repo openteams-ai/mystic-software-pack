@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: checkmaite-analytics
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "checkmaite.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: {{ .Values.analytics.storageClassName }}
+  resources:
+    requests:
+      storage: {{ .Values.analytics.size }}

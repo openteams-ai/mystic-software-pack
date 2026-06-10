@@ -1,0 +1,50 @@
+{{/*
+  NebariApp Custom Resource
+  --------------------------
+  When deployed on a Nebari cluster with nebariapp.enabled=true, this resource
+  tells the nebari-operator to auto-configure:
+    - HTTPRoute (routing traffic from the shared Gateway to the checkmaite Service)
+    - TLS certificate (via cert-manager)
+    - OIDC authentication (via Keycloak + Envoy Gateway SecurityPolicy)
+
+  apiVersion / kind: reconcilers.nebari.dev/v1 / NebariApp
+  (canonical template form — NOT the older nebari.dev/v1alpha1 / NebariApplication)
+*/}}
+{{- if .Values.nebariapp.enabled }}
+apiVersion: reconcilers.nebari.dev/v1
+kind: NebariApp
+metadata:
+  name: {{ include "checkmaite.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "checkmaite.labels" . | nindent 4 }}
+spec:
+  hostname: {{ required "nebariapp.hostname is required when nebariapp.enabled is true" .Values.nebariapp.hostname }}
+  service:
+    name: {{ .Values.nebariapp.service.name | default (include "checkmaite.fullname" .) }}
+    port: {{ .Values.nebariapp.service.port | default 5006 }}
+  {{- with .Values.nebariapp.routing }}
+  routing:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with .Values.nebariapp.auth }}
+  auth:
+    enabled: {{ .enabled | default false }}
+    provider: {{ .provider | default "keycloak" }}
+    provisionClient: {{ .provisionClient | default true }}
+    {{- with .redirectURI }}
+    redirectURI: {{ . }}
+    {{- end }}
+    {{- with .scopes }}
+    scopes:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
+    {{- with .groups }}
+    groups:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
+  {{- end }}
+  {{- with .Values.nebariapp.gateway }}
+  gateway: {{ . }}
+  {{- end }}
+{{- end }}

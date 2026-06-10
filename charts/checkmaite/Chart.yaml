@@ -1,0 +1,9 @@
+apiVersion: v2
+name: checkmaite
+description: >
+  Nebari software pack for the Checkmaite T&E workbench (checkmaite-serve UI/API),
+  EFS analytics PVC, and nightly evaluation CronJob.
+  Namespace: nebari-checkmaite-pack.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

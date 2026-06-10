@@ -1,0 +1,194 @@
+# Default values for custody-demo
+# This is a YAML-formatted file.
+#
+# Multi-service chart: four deployments + four services.
+# NebariApp resources are created for custody-agent and custody-demo-ui only;
+# custody-tools and custody-fault-proxy are cluster-internal.
+#
+# NOTE: This chart adapts the single-app NebariApp template pattern to a
+# multi-service chart.  Two NebariApp sub-blocks (nebariapp.agent.*,
+# nebariapp.ui.*) are defined below; the templates/nebariapp.yaml template
+# renders one NebariApp per routed service when nebariapp.enabled=true.
+# See charts/custody-demo/README.md for the rationale.
+
+# =============================================================================
+# Nebari Integration
+# =============================================================================
+nebariapp:
+  enabled: false
+  # Per-service sub-blocks. hostname is required for each when enabled=true.
+  agent:
+    # hostname: agent.custody.demo.openteams.com
+    service:
+      name: custody-agent
+      port: 8080
+    auth:
+      enabled: true
+      provider: keycloak
+      provisionClient: true
+      scopes:
+        - openid
+        - profile
+        - email
+    # publicRoutes: paths that bypass Keycloak (healthz stays open for checkmaite probes)
+    routing:
+      publicRoutes:
+        - pathPrefix: /healthz
+          pathType: Exact
+    gateway: public
+  ui:
+    # hostname: demo.custody.demo.openteams.com
+    service:
+      name: custody-demo-ui
+      port: 8060
+    auth:
+      enabled: true
+      provider: keycloak
+      provisionClient: true
+      scopes:
+        - openid
+        - profile
+        - email
+    gateway: public
+
+# =============================================================================
+# Secrets (referenced by name — never inline values)
+# =============================================================================
+# Required K8s Secrets that must exist in the release namespace before deploy:
+#   model-api-keys  — keys: ANTHROPIC_API_KEY, OPENAI_API_KEY
+#   langfuse-keys   — keys: LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY
+secrets:
+  modelApiKeys: model-api-keys
+  langfuseKeys: langfuse-keys
+
+# =============================================================================
+# Service Account (IRSA for S3 access)
+# =============================================================================
+serviceAccount:
+  name: custody-data
+  # irsaRoleArn: arn:aws:iam::<account>:role/custody-demo-data-irsa
+  irsaRoleArn: ""
+
+# =============================================================================
+# Common env wiring
+# =============================================================================
+common:
+  otelExporterOtlpEndpoint: http://otel-collector.opentelemetry.svc:4318
+  dataBucket: custody-demo-data
+
+# =============================================================================
+# GPU scheduling (for custody-tools when gpu=true)
+# =============================================================================
+gpu:
+  nodeSelector:
+    nodegroup: gpu
+  tolerations:
+    - key: nvidia.com/gpu
+      operator: Equal
+      value: "true"
+      effect: NoSchedule
+
+# =============================================================================
+# Per-service configuration
+# =============================================================================
+# Each entry under services: becomes one Deployment + one Service.
+# Keys must match the contract service names from shared-contracts §9.
+# Swap image/tag/args to move from stub to real image; set gpu: true on
+# custody-tools when Team 2's YOLO/ByteTrack image lands.
+services:
+  custody-agent:
+    port: 8080
+    image:
+      repository: hashicorp/http-echo
+      tag: "1.0.0"
+    args:
+      - "-listen=:8080"
+      - '-text={"status":"ok","service":"custody-agent-stub"}'
+    gpu: false
+    envFromSecrets:
+      - model-api-keys
+      - langfuse-keys
+    env:
+      - name: LANGFUSE_HOST
+        value: http://langfuse-web.nebari-langfuse-pack.svc:3000
+      - name: TOOLS_BASE_URL
+        # agent ALWAYS calls the fault proxy — contract §4
+        value: http://custody-fault-proxy.nebari-custody-demo-pack.svc:8085
+    resources:
+      requests:
+        cpu: 250m
+        memory: 512Mi
+      limits:
+        cpu: "2"
+        memory: 4Gi
+
+  custody-tools:
+    port: 8090
+    image:
+      repository: hashicorp/http-echo
+      tag: "1.0.0"
+    args:
+      - "-listen=:8090"
+      - '-text={"status":"ok","service":"custody-tools-stub"}'
+    gpu: false  # flip to true when Team 2's real YOLO/ByteTrack image lands
+    envFromSecrets: []
+    env:
+      - name: CUSTODY_DATA_BUCKET
+        value: custody-demo-data
+    resources:
+      requests:
+        cpu: 250m
+        memory: 512Mi
+      limits:
+        cpu: "3"
+        memory: 8Gi
+
+  custody-fault-proxy:
+    port: 8085
+    image:
+      repository: hashicorp/http-echo
+      tag: "1.0.0"
+    args:
+      - "-listen=:8085"
+      - '-text={"status":"ok","service":"custody-fault-proxy-stub"}'
+    gpu: false
+    envFromSecrets: []
+    env:
+      - name: UPSTREAM_BASE_URL
+        value: http://custody-tools.nebari-custody-demo-pack.svc:8090
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: "1"
+        memory: 512Mi
+
+  custody-demo-ui:
+    port: 8060
+    image:
+      repository: hashicorp/http-echo
+      tag: "1.0.0"
+    args:
+      - "-listen=:8060"
+      - '-text={"status":"ok","service":"custody-demo-ui-stub"}'
+    gpu: false
+    envFromSecrets: []
+    env:
+      - name: AGENT_BASE_URL
+        value: http://custody-agent.nebari-custody-demo-pack.svc:8080
+      - name: CUSTODY_DATA_BUCKET
+        value: custody-demo-data
+    resources:
+      requests:
+        cpu: 250m
+        memory: 512Mi
+      limits:
+        cpu: "2"
+        memory: 4Gi
+
+# =============================================================================
+# Overrides
+# =============================================================================
+nameOverride: ""
+fullnameOverride: ""

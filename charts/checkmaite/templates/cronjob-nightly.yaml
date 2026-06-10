@@ -1,0 +1,136 @@
+{{/*
+  Nightly scenario-A smoke eval CronJob.
+  Disabled by default (nightlyEval.enabled=false).
+  Enable in ArgoCD values once Team 3's checkmaite-plugin-custody is baked
+  into the image (set nightlyEval.enabled=true + bump image tag).
+
+  Init containers:
+    fetch-benchmarks: shallow-clone custody-benchmarks repo → /benchmarks
+    fetch-gt:         sync *.gt.txt from S3 (IRSA ServiceAccount grants access)
+
+  Main container invokes the Team 3 CLI (contract §10) with exact flags.
+*/}}
+{{- if .Values.nightlyEval.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: checkmaite-nightly-smoke
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "checkmaite.labels" . | nindent 4 }}
+spec:
+  schedule: {{ .Values.nightlyEval.schedule | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 3600
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: checkmaite-nightly-smoke
+            app.kubernetes.io/instance: {{ .Release.Name }}
+        spec:
+          restartPolicy: Never
+          serviceAccountName: {{ .Values.serviceAccount.name }}
+          initContainers:
+            - name: fetch-benchmarks
+              image: alpine/git:2.45.2
+              args:
+                - clone
+                - --depth=1
+                - {{ .Values.nightlyEval.benchmarksRepo }}
+                - /benchmarks
+              volumeMounts:
+                - name: benchmarks
+                  mountPath: /benchmarks
+            # GT files are required for the 8 deterministic GT metrics
+            # (idf1, custody_*, id_switches, reacquired, ece ...).
+            # Syncs only *.gt.txt objects from staged S3 data;
+            # IRSA ServiceAccount grants read access.
+            - name: fetch-gt
+              image: amazon/aws-cli:2.17.0
+              args:
+                - s3
+                - sync
+                - s3://{{ .Values.s3.bucket }}/visdrone-mot
+                - /data/gt/visdrone-mot
+                - --exclude
+                - "*"
+                - --include
+                - "*.gt.txt"
+              volumeMounts:
+                - name: gt-data
+                  mountPath: /data/gt
+          containers:
+            - name: smoke-eval
+              image: "{{ required "image.repository is required" .Values.image.repository }}:{{ .Values.image.tag }}"
+              # CLI contract §10 — exact flags required by checkmaite_plugin_custody.cli
+              command:
+                - python
+                - -m
+                - checkmaite_plugin_custody.cli
+                - run
+                - --scenario
+                - {{ .Values.nightlyEval.scenario }}
+                - --scenarios-dir
+                - /benchmarks/scenarios
+                - --model
+                - {{ .Values.nightlyEval.modelId }}
+                - --sut-base-url
+                - {{ .Values.endpoints.sutBaseUrl }}
+                - --tools-base-url
+                - {{ .Values.endpoints.toolsBaseUrl }}
+                - --judge-base-url
+                - {{ .Values.endpoints.judgeBaseUrl }}
+                - --rubrics-dir
+                - /benchmarks/rubrics
+                - --gt-root
+                - /data/gt/visdrone-mot
+                - --out
+                - {{ .Values.analytics.mountPath }}
+              env:
+                - name: LANGFUSE_HOST
+                  value: {{ .Values.langfuse.host }}
+                - name: LANGFUSE_PUBLIC_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Values.langfuse.secretName }}
+                      key: LANGFUSE_PUBLIC_KEY
+                - name: LANGFUSE_SECRET_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Values.langfuse.secretName }}
+                      key: LANGFUSE_SECRET_KEY
+                - name: OTEL_EXPORTER_OTLP_ENDPOINT
+                  value: {{ .Values.endpoints.otelExporterOtlpEndpoint }}
+                - name: CUSTODY_DATA_BUCKET
+                  value: {{ .Values.s3.bucket }}
+                # Belt-and-braces: CLI falls back to these env vars if flags are absent
+                - name: SUT_BASE_URL
+                  value: {{ .Values.endpoints.sutBaseUrl }}
+                - name: TOOLS_BASE_URL
+                  value: {{ .Values.endpoints.toolsBaseUrl }}
+                - name: JUDGE_BASE_URL
+                  value: {{ .Values.endpoints.judgeBaseUrl }}
+                - name: CUSTODY_GT_ROOT
+                  value: /data/gt/visdrone-mot
+              volumeMounts:
+                - name: analytics
+                  mountPath: {{ .Values.analytics.mountPath }}
+                - name: benchmarks
+                  mountPath: /benchmarks
+                - name: gt-data
+                  mountPath: /data/gt
+                  readOnly: true
+          volumes:
+            - name: analytics
+              persistentVolumeClaim:
+                claimName: checkmaite-analytics
+            - name: benchmarks
+              emptyDir: {}
+            - name: gt-data
+              emptyDir: {}
+{{- end }}

@@ -1,0 +1,45 @@
+Langfuse has been deployed (release: {{ .Release.Name }}).
+
+Upstream chart: langfuse/langfuse (subchart — Deployments and Services come from there)
+
+In-cluster URL (used by agent service, OTel collector — contract §6):
+  http://{{ .Release.Name }}-langfuse-web.{{ .Release.Namespace }}.svc:3000
+
+{{- if .Values.nebariapp.enabled }}
+
+NebariApp is ENABLED. The nebari-operator will configure:
+  - HTTPRoute for hostname: {{ .Values.nebariapp.hostname }}
+  {{- if .Values.nebariapp.auth.enabled }}
+  - OIDC authentication via {{ .Values.nebariapp.auth.provider }}
+  - /api/public/* is a publicRoute (SDK ingestion + OTLP use Langfuse key auth)
+  {{- end }}
+
+Check NebariApp status:
+  kubectl get nebariapp {{ include "langfuse.fullname" . }} -n {{ .Release.Namespace }}
+
+Verify SDK ingest (bypasses Keycloak):
+  curl -s -u "${LANGFUSE_PUBLIC_KEY}:${LANGFUSE_SECRET_KEY}" \
+    https://{{ .Values.nebariapp.hostname }}/api/public/projects
+
+{{- else }}
+
+NebariApp is DISABLED. Access Langfuse locally:
+  kubectl port-forward svc/{{ .Release.Name }}-langfuse-web 3000:3000 -n {{ .Release.Namespace }}
+
+Enable Nebari routing:
+  --set nebariapp.enabled=true \
+  --set nebariapp.hostname=langfuse.custody.demo.example.com \
+  --set langfuse.langfuse.nextauth.url=https://langfuse.custody.demo.example.com
+
+{{- end }}
+
+Required K8s Secrets (must exist before deploy):
+  langfuse-core  — keys: salt, encryption-key, nextauth-secret
+  langfuse-init  — keys: LANGFUSE_INIT_ORG_ID, LANGFUSE_INIT_ORG_NAME,
+                         LANGFUSE_INIT_PROJECT_ID, LANGFUSE_INIT_PROJECT_NAME,
+                         LANGFUSE_INIT_PROJECT_PUBLIC_KEY, LANGFUSE_INIT_PROJECT_SECRET_KEY,
+                         LANGFUSE_INIT_USER_EMAIL, LANGFUSE_INIT_USER_NAME,
+                         LANGFUSE_INIT_USER_PASSWORD
+
+Run helm dependency update before first install:
+  helm dependency update charts/langfuse

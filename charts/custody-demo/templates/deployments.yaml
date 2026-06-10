@@ -1,0 +1,83 @@
+{{/*
+  One Deployment per service entry in .Values.services.
+  GPU scheduling (nodeSelector + tolerations) applied when svc.gpu=true.
+  Image swap is values-only: set services.<name>.image.repository + tag + args.
+*/}}
+{{- range $name, $svc := .Values.services }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: {{ $name }}
+    app.kubernetes.io/instance: {{ $.Release.Name }}
+    app.kubernetes.io/part-of: custody-demo
+    app.kubernetes.io/managed-by: {{ $.Release.Service }}
+    helm.sh/chart: {{ include "custody-demo.chart" $ }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ $name }}
+      app.kubernetes.io/instance: {{ $.Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ $name }}
+        app.kubernetes.io/instance: {{ $.Release.Name }}
+        app.kubernetes.io/part-of: custody-demo
+    spec:
+      serviceAccountName: {{ $.Values.serviceAccount.name }}
+      {{- if $svc.gpu }}
+      nodeSelector:
+        {{- toYaml $.Values.gpu.nodeSelector | nindent 8 }}
+      tolerations:
+        {{- toYaml $.Values.gpu.tolerations | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: {{ $name }}
+          image: "{{ $svc.image.repository }}:{{ $svc.image.tag }}"
+          {{- with $svc.args }}
+          args:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          ports:
+            - name: http
+              containerPort: {{ $svc.port }}
+              protocol: TCP
+          env:
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: {{ $.Values.common.otelExporterOtlpEndpoint }}
+            - name: OTEL_SERVICE_NAME
+              value: {{ $name }}
+            {{- with $svc.env }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- with $svc.envFromSecrets }}
+          envFrom:
+            {{- range . }}
+            - secretRef:
+                name: {{ . }}
+            {{- end }}
+          {{- end }}
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: {{ $svc.port }}
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          {{- if $svc.gpu }}
+          resources:
+            requests:
+              {{- toYaml $svc.resources.requests | nindent 14 }}
+              nvidia.com/gpu: 1
+            limits:
+              {{- toYaml $svc.resources.limits | nindent 14 }}
+              nvidia.com/gpu: 1
+          {{- else }}
+          resources:
+            {{- toYaml $svc.resources | nindent 12 }}
+          {{- end }}
+{{- end }}

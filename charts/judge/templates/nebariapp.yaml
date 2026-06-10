@@ -1,0 +1,8 @@
+{{/*
+  NebariApp — intentionally never rendered for the judge chart.
+  The judge is cluster-internal (contract §7). This template is a no-op so
+  the chart remains conformant with the template's nebariapp.enabled toggle.
+*/}}
+{{- if .Values.nebariapp.enabled }}
+{{- fail "judge chart: nebariapp.enabled must be false — the judge is cluster-internal by design (contract §7)" }}
+{{- end }}
