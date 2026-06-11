@@ -48,8 +48,7 @@ template-custody-demo:
 	@echo "--- custody-demo (nebariapp.enabled=true) ---"
 	helm template t $(CHARTS_DIR)/custody-demo/ \
 		--set nebariapp.enabled=true \
-		--set nebariapp.agent.hostname=agent.custody.local \
-		--set nebariapp.ui.hostname=demo.custody.local > /dev/null
+		--set nebariapp.agent.hostname=agent.custody.local > /dev/null
 	@echo "custody-demo: OK"
 
 template-checkmaite:

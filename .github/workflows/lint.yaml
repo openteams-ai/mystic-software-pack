@@ -30,8 +30,7 @@ jobs:
         run: |
           helm template t charts/custody-demo/ \
             --set nebariapp.enabled=true \
-            --set nebariapp.agent.hostname=agent.example.com \
-            --set nebariapp.ui.hostname=demo.example.com
+            --set nebariapp.agent.hostname=agent.example.com
 
       # ----------------------------------------------------------------
       # checkmaite

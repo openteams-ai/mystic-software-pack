@@ -1,32 +1,28 @@
 custody-demo has been deployed (release: {{ .Release.Name }}).
 
 Services (all ClusterIP, cluster-internal):
-  custody-agent       port 8080  — SUT HTTP contract (POST /v1/custody/run, GET /v1/custody/runs/{id})
+  custody-agent       port 8080  — SUT HTTP contract (POST /v1/custody/run, GET /v1/custody/runs/{id}); also serves the React demo UI same-origin
   custody-tools       port 8090  — frame sampling, detection+tracking, cue lookup (GPU when gpu=true)
   custody-fault-proxy port 8085  — forwards to custody-tools, applies FaultProfile per run
-  custody-demo-ui     port 8060  — web demo front-end
 
 {{- if .Values.nebariapp.enabled }}
 
 NebariApp is ENABLED. The nebari-operator will configure routing for:
   - custody-agent  → https://{{ .Values.nebariapp.agent.hostname }}
+    (API + React demo UI, same origin; full Keycloak SSO)
     /healthz is a publicRoute (bypasses Keycloak — needed for checkmaite probes)
-  - custody-demo-ui → https://{{ .Values.nebariapp.ui.hostname }}
-    Full Keycloak SSO enforced.
 
 Check NebariApp status:
   kubectl get nebariapp -n {{ .Release.Namespace }}
 
 {{- else }}
 
-NebariApp is DISABLED. Port-forward for local access:
+NebariApp is DISABLED. Port-forward for local access (UI + API on one port):
   kubectl port-forward svc/custody-agent 8080:8080 -n {{ .Release.Namespace }}
-  kubectl port-forward svc/custody-demo-ui 8060:8060 -n {{ .Release.Namespace }}
 
 Enable Nebari routing:
   --set nebariapp.enabled=true \
-  --set nebariapp.agent.hostname=agent.custody.demo.example.com \
-  --set nebariapp.ui.hostname=demo.custody.demo.example.com
+  --set nebariapp.agent.hostname=agent.custody.demo.example.com
 
 {{- end }}
 

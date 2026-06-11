@@ -1,10 +1,11 @@
 apiVersion: v2
 name: custody-demo
 description: >
-  Nebari software pack for the Mystic LOE-1 custody-demo SUT: four services
-  (custody-agent, custody-tools, custody-fault-proxy, custody-demo-ui).
-  NebariApp routing is provisioned for custody-agent (8080) and custody-demo-ui
-  (8060); custody-tools (8090) and custody-fault-proxy (8085) are cluster-internal.
+  Nebari software pack for the Mystic LOE-1 custody-demo SUT: three services
+  (custody-agent, custody-tools, custody-fault-proxy).  NebariApp routing is
+  provisioned for custody-agent (8080), which also serves the React demo UI
+  same-origin; custody-tools (8090) and custody-fault-proxy (8085) are
+  cluster-internal.
 type: application
-version: 0.2.0
+version: 0.3.0
 appVersion: "0.1.0"

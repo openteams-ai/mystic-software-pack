@@ -13,6 +13,16 @@ Not deployed from this repo:
 
 ## Changelog
 
+### charts/custody-demo v0.3.0 (2026-06-11)
+
+- **custody-demo-ui retired** — the React SPA is built into and served by the
+  `custody-agent` image (same origin), so the legacy Panel dashboard service,
+  its NebariApp (`nebariapp.ui.*`), and its values block are removed.  The
+  chart now deploys three services; one NebariApp routes the agent (API + UI).
+- **Real images run as non-root** (uid 10001) — when attaching a PVC for run
+  artifacts, set `fsGroup: 10001` in the pod securityContext (emptyDir needs
+  nothing).
+
 ### charts/custody-demo v0.2.0 (2026-06-10)
 
 - **run-artifacts volume** — custody-agent Deployment now mounts a `run-artifacts`
@@ -48,7 +58,7 @@ Not deployed from this repo:
 
 | Chart | Namespace | Services | NebariApp | Notes |
 |-------|-----------|----------|-----------|-------|
-| `charts/custody-demo` | `nebari-custody-demo-pack` | custody-agent (8080), custody-tools (8090), custody-fault-proxy (8085), custody-demo-ui (8060) | agent + ui only | Multi-service; see §Multi-service adaptation |
+| `charts/custody-demo` | `nebari-custody-demo-pack` | custody-agent (8080, serves the React UI same-origin), custody-tools (8090), custody-fault-proxy (8085) | agent only | Multi-service; see §Multi-service adaptation |
 | `charts/checkmaite` | `nebari-checkmaite-pack` | checkmaite-serve (5006) | yes | Includes nightly eval CronJob |
 
 All charts are **NebariApp-conformant**:
@@ -74,8 +84,6 @@ source:
         enabled: true
         agent:
           hostname: agent.mystic.openteams.ai
-        ui:
-          hostname: demo.mystic.openteams.ai
 
 # checkmaite
 source:
@@ -108,13 +116,14 @@ make template-custody-demo
 ## Multi-service NebariApp adaptation (custody-demo)
 
 The standard template assumes one NebariApp per chart.  The `custody-demo`
-chart contains four services but only two are externally routed (`custody-agent`
-and `custody-demo-ui`).  To stay as close to the template as possible:
+chart contains three services but only one is externally routed
+(`custody-agent`, which also serves the React demo UI same-origin — the
+legacy `custody-demo-ui` Panel service was retired).  To stay as close to
+the template as possible:
 
-- Two NebariApp sub-blocks live under `values.nebariapp`: `nebariapp.agent.*`
-  and `nebariapp.ui.*`.
-- `templates/nebariapp.yaml` renders two `NebariApp` resources (one per routed
-  service) when `nebariapp.enabled=true`.
+- The NebariApp sub-block lives under `values.nebariapp.agent.*`.
+- `templates/nebariapp.yaml` renders one `NebariApp` resource when
+  `nebariapp.enabled=true`.
 - The un-routed services (`custody-tools`, `custody-fault-proxy`) have no
   NebariApp at all — they are cluster-internal only (contract §4).
 
@@ -149,8 +158,8 @@ model is `google/gemini-3.5-flash`, overridable via `judge.model`).
 by `mystic-custody-agent` CI under **`quay.io/openteams/mystic/`** (public;
 tags `latest` and `sha-<short>`; quay extended repository names keep the
 program namespaced inside the shared org): `custody-agent`, `custody-tools`,
-`custody-fault-proxy`, `custody-demo-ui`.  Swapping to a real image is a
-values-only change in the ArgoCD Application — no chart edits needed:
+`custody-fault-proxy`.  Swapping to a real image is a values-only change in
+the ArgoCD Application — no chart edits needed:
 
 ```yaml
 services:

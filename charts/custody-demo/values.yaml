@@ -1,14 +1,13 @@
 # Default values for custody-demo
 # This is a YAML-formatted file.
 #
-# Multi-service chart: four deployments + four services.
-# NebariApp resources are created for custody-agent and custody-demo-ui only;
+# Multi-service chart: three deployments + three services.
+# Only custody-agent gets a NebariApp — it also serves the React demo UI
+# same-origin (the legacy custody-demo-ui Panel service was retired);
 # custody-tools and custody-fault-proxy are cluster-internal.
 #
 # NOTE: This chart adapts the single-app NebariApp template pattern to a
-# multi-service chart.  Two NebariApp sub-blocks (nebariapp.agent.*,
-# nebariapp.ui.*) are defined below; the templates/nebariapp.yaml template
-# renders one NebariApp per routed service when nebariapp.enabled=true.
+# multi-service chart: the NebariApp sub-block lives at nebariapp.agent.*.
 # See charts/custody-demo/README.md for the rationale.
 
 # =============================================================================
@@ -16,7 +15,8 @@
 # =============================================================================
 nebariapp:
   enabled: false
-  # Per-service sub-blocks. hostname is required for each when enabled=true.
+  # hostname is required when enabled=true. The agent serves the React UI
+  # same-origin, so this one route covers both API and UI.
   agent:
     # hostname: agent.mystic.openteams.ai
     service:
@@ -46,20 +46,6 @@ nebariapp:
       publicRoutes:
         - pathPrefix: /healthz
           pathType: Exact
-    gateway: public
-  ui:
-    # hostname: demo.mystic.openteams.ai
-    service:
-      name: custody-demo-ui
-      port: 8060
-    auth:
-      enabled: true
-      provider: keycloak
-      provisionClient: true
-      scopes:
-        - openid
-        - profile
-        - email
     gateway: public
 
 # =============================================================================
@@ -196,29 +182,6 @@ services:
       limits:
         cpu: "1"
         memory: 512Mi
-
-  custody-demo-ui:
-    port: 8060
-    image:
-      repository: hashicorp/http-echo
-      tag: "1.0.0"
-    args:
-      - "-listen=:8060"
-      - '-text={"status":"ok","service":"custody-demo-ui-stub"}'
-    gpu: false
-    envFromSecrets: []
-    env:
-      - name: AGENT_BASE_URL
-        value: http://custody-agent.nebari-custody-demo-pack.svc:8080
-      - name: CUSTODY_DATA_BUCKET
-        value: custody-demo-data
-    resources:
-      requests:
-        cpu: 250m
-        memory: 512Mi
-      limits:
-        cpu: "2"
-        memory: 4Gi
 
 # =============================================================================
 # Overrides
