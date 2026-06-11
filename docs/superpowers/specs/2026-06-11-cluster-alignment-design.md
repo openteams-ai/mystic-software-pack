@@ -66,6 +66,11 @@ The deployed instance lives in namespace `langfuse`, so the in-cluster URL is
   `nvidia.com/gpu: 1`). Note that the 4 Gi `/dev/shm` emptyDir
   (`medium: Memory`) counts against the container memory limit.
 
+`charts/custody-demo/values.yaml` has the same stale selector in its shared
+`gpu:` block (used by custody-tools when `gpu: true`):
+`gpu.nodeSelector` also changes from `nodegroup: gpu` to
+`eks.amazonaws.com/nodegroup: gpu-small`.
+
 ### 4. Storage classes
 
 `efs-sc` → `longhorn`:
