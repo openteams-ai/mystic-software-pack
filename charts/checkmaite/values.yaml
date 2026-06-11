@@ -21,6 +21,16 @@ nebariapp:
       - profile
       - email
   gateway: public
+  # Cluster landing-page tile. icon must be anonymously fetchable — point it
+  # at the custody-agent-served SVG, e.g.
+  # https://agent.mystic.openteams.ai/mystic_depot_icon.svg
+  landingPage:
+    enabled: true
+    displayName: "Checkmaite"
+    description: "Custody evaluation — runs, metrics, analytics"
+    icon: ""
+    category: "Mystic"
+    priority: 20
 
 # =============================================================================
 # Application image

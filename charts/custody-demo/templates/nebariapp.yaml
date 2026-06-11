@@ -50,4 +50,21 @@ spec:
   {{- with .Values.nebariapp.agent.gateway }}
   gateway: {{ . }}
   {{- end }}
+  {{- with .Values.nebariapp.agent.landingPage }}
+  {{- if .enabled }}
+  landingPage:
+    enabled: true
+    displayName: {{ .displayName | quote }}
+    description: {{ .description | quote }}
+    # icon must be anonymously fetchable — /mystic_depot_icon.svg is a
+    # publicRoute served by the agent image itself
+    icon: {{ .icon | default (printf "https://%s/mystic_depot_icon.svg" $.Values.nebariapp.agent.hostname) | quote }}
+    {{- with .category }}
+    category: {{ . | quote }}
+    {{- end }}
+    {{- with .priority }}
+    priority: {{ . }}
+    {{- end }}
+  {{- end }}
+  {{- end }}
 {{- end }}

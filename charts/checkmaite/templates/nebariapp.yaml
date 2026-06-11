@@ -47,4 +47,21 @@ spec:
   {{- with .Values.nebariapp.gateway }}
   gateway: {{ . }}
   {{- end }}
+  {{- with .Values.nebariapp.landingPage }}
+  {{- if .enabled }}
+  landingPage:
+    enabled: true
+    displayName: {{ .displayName | quote }}
+    description: {{ .description | quote }}
+    {{- with .icon }}
+    icon: {{ . | quote }}
+    {{- end }}
+    {{- with .category }}
+    category: {{ . | quote }}
+    {{- end }}
+    {{- with .priority }}
+    priority: {{ . }}
+    {{- end }}
+  {{- end }}
+  {{- end }}
 {{- end }}

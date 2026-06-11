@@ -46,7 +46,22 @@ nebariapp:
       publicRoutes:
         - pathPrefix: /healthz
           pathType: Exact
+        # The landing-page tile icon must be fetchable WITHOUT auth (the
+        # cluster landing page renders it pre-login). Served from the SPA's
+        # public assets baked into the custody-agent image.
+        - pathPrefix: /mystic_depot_icon.svg
+          pathType: Exact
     gateway: public
+    # Cluster landing-page tile (rendered by nebari-landingpage via the
+    # NebariApp CRD). icon defaults to the agent-served SVG at
+    # https://<hostname>/mystic_depot_icon.svg when left empty.
+    landingPage:
+      enabled: true
+      displayName: "Mystic Depot"
+      description: "GEOINT custody demo — agent, live mission UI, run artifacts"
+      icon: ""
+      category: "Mystic"
+      priority: 10
 
 # =============================================================================
 # Secrets (referenced by name — never inline values)
