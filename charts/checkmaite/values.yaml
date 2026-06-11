@@ -8,7 +8,7 @@
 # Set enabled: true when deploying on a Nebari cluster.
 nebariapp:
   enabled: false
-  # hostname: checkmaite.custody.demo.openteams.com  # Required when enabled
+  # hostname: checkmaite.mystic.openteams.ai  # Required when enabled
   service:
     name: checkmaite
     port: 5006
@@ -40,10 +40,10 @@ serviceAccount:
   irsaRoleArn: ""
 
 # =============================================================================
-# Analytics PVC (EFS, RWX — contract §9: /data/analytics)
+# Analytics PVC (RWX via longhorn share-manager — contract §9: /data/analytics)
 # =============================================================================
 analytics:
-  storageClassName: efs-sc
+  storageClassName: longhorn
   size: 50Gi
   mountPath: /data/analytics
 
@@ -54,7 +54,18 @@ langfuse:
   # K8s Secret in this namespace with LANGFUSE_PUBLIC_KEY / LANGFUSE_SECRET_KEY
   # (contract §9: Secret name "langfuse-keys")
   secretName: langfuse-keys
-  host: http://langfuse-web.nebari-langfuse-pack.svc:3000
+  # Cluster-provided Langfuse: the GitOps repo (openteams-ai/mystic.openteams.ai)
+  # deploys nebari-langfuse-pack as release "langfuse" in namespace "langfuse".
+  host: http://langfuse-web.langfuse.svc:3000
+
+# =============================================================================
+# Judge (hosted OpenRouter endpoint — contract §7)
+# =============================================================================
+judge:
+  # K8s Secret in this namespace with key OPENROUTER_API_KEY
+  secretName: judge-keys
+  # Vision-capable model that supports response_format json_object
+  model: google/gemini-3.5-flash
 
 # =============================================================================
 # Endpoint wiring (contract §9 / §7 / §10)
@@ -63,7 +74,7 @@ endpoints:
   sutBaseUrl: http://custody-agent.nebari-custody-demo-pack.svc:8080
   # Agent calls the fault proxy; plugin calls tools directly for evidence crops (§9)
   toolsBaseUrl: http://custody-fault-proxy.nebari-custody-demo-pack.svc:8085
-  judgeBaseUrl: http://judge.nebari-judge-pack.svc:8000/v1
+  judgeBaseUrl: https://openrouter.ai/api/v1
   otelExporterOtlpEndpoint: http://otel-collector.opentelemetry.svc:4318
 
 # =============================================================================

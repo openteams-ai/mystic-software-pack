@@ -115,6 +115,13 @@ spec:
                   value: {{ .Values.endpoints.toolsBaseUrl }}
                 - name: JUDGE_BASE_URL
                   value: {{ .Values.endpoints.judgeBaseUrl }}
+                - name: JUDGE_MODEL
+                  value: {{ .Values.judge.model }}
+                - name: JUDGE_API_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Values.judge.secretName }}
+                      key: OPENROUTER_API_KEY
                 - name: CUSTODY_GT_ROOT
                   value: /data/gt/visdrone-mot
               volumeMounts:
