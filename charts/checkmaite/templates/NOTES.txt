@@ -23,7 +23,7 @@ NebariApp is DISABLED. To access the service locally:
 Enable Nebari routing:
   --set nebariapp.enabled=true \
   --set nebariapp.hostname=checkmaite.custody.demo.example.com \
-  --set image.repository=quay.io/openteams/mystic-checkmaite
+  --set image.repository=quay.io/openteams/mystic/checkmaite
 
 {{- end }}
 
