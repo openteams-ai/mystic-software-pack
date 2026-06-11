@@ -3,39 +3,33 @@
 # Prerequisites: helm 3.8+
 #
 # Usage:
-#   make dep           Fetch all chart dependencies (langfuse subchart)
-#   make lint          helm lint all four charts
-#   make template      helm template render-check for all four charts
-#   make all           dep + lint + template
+#   make lint          helm lint both charts
+#   make template      helm template render-check for both charts
+#   make all           lint + template
 #
 # Individual chart targets:
 #   make lint-custody-demo
 #   make lint-checkmaite
-#   make lint-judge
-#   make lint-langfuse
 #   make template-custody-demo
 #   make template-checkmaite
-#   make template-judge
-#   make template-langfuse
+#
+# NOTE: Langfuse is NOT deployed from this repo — the cluster GitOps repo
+# (openteams-ai/mystic.openteams.ai) deploys nebari-langfuse-pack as release
+# "langfuse" in namespace "langfuse".  The judge is NOT self-hosted — the
+# checkmaite chart points at OpenRouter (contract §7).
 
 CHARTS_DIR := ../charts
 
-.PHONY: all dep lint template \
-        lint-custody-demo lint-checkmaite lint-judge lint-langfuse \
-        template-custody-demo template-checkmaite template-judge template-langfuse
+.PHONY: all lint template \
+        lint-custody-demo lint-checkmaite \
+        template-custody-demo template-checkmaite
 
-all: dep lint template
-
-# --------------------------------------------------------------------------
-# dep — fetch upstream chart dependencies (langfuse subchart)
-# --------------------------------------------------------------------------
-dep:
-	helm dependency update $(CHARTS_DIR)/langfuse/
+all: lint template
 
 # --------------------------------------------------------------------------
-# lint — validate all four charts
+# lint — validate both charts
 # --------------------------------------------------------------------------
-lint: lint-custody-demo lint-checkmaite lint-judge lint-langfuse
+lint: lint-custody-demo lint-checkmaite
 
 lint-custody-demo:
 	helm lint $(CHARTS_DIR)/custody-demo/
@@ -43,16 +37,10 @@ lint-custody-demo:
 lint-checkmaite:
 	helm lint $(CHARTS_DIR)/checkmaite/
 
-lint-judge:
-	helm lint $(CHARTS_DIR)/judge/
-
-lint-langfuse: dep
-	helm lint $(CHARTS_DIR)/langfuse/
-
 # --------------------------------------------------------------------------
-# template — render-check all four charts (both enabled/disabled NebariApp)
+# template — render-check both charts (both enabled/disabled NebariApp)
 # --------------------------------------------------------------------------
-template: template-custody-demo template-checkmaite template-judge template-langfuse
+template: template-custody-demo template-checkmaite
 
 template-custody-demo:
 	@echo "--- custody-demo (nebariapp.enabled=false) ---"
@@ -75,26 +63,3 @@ template-checkmaite:
 		--set nebariapp.hostname=checkmaite.custody.local \
 		--set nightlyEval.enabled=true > /dev/null
 	@echo "checkmaite: OK"
-
-template-judge:
-	@echo "--- judge ---"
-	helm template t $(CHARTS_DIR)/judge/ --set nebariapp.enabled=false > /dev/null
-	@echo "judge: OK"
-
-template-langfuse: dep
-	@echo "--- langfuse (nebariapp.enabled=false) ---"
-	helm template t $(CHARTS_DIR)/langfuse/ \
-		--set langfuse.postgresql.auth.password=dev \
-		--set langfuse.clickhouse.auth.password=dev \
-		--set langfuse.redis.auth.password=dev \
-		--set langfuse.minio.auth.rootPassword=dev > /dev/null
-	@echo "--- langfuse (nebariapp.enabled=true) ---"
-	helm template t $(CHARTS_DIR)/langfuse/ \
-		--set nebariapp.enabled=true \
-		--set nebariapp.hostname=langfuse.custody.local \
-		--set langfuse.langfuse.nextauth.url=https://langfuse.custody.local \
-		--set langfuse.postgresql.auth.password=dev \
-		--set langfuse.clickhouse.auth.password=dev \
-		--set langfuse.redis.auth.password=dev \
-		--set langfuse.minio.auth.rootPassword=dev > /dev/null
-	@echo "langfuse: OK"
