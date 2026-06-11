@@ -18,7 +18,7 @@ nebariapp:
   enabled: false
   # Per-service sub-blocks. hostname is required for each when enabled=true.
   agent:
-    # hostname: agent.custody.demo.openteams.com
+    # hostname: agent.mystic.openteams.ai
     service:
       name: custody-agent
       port: 8080
@@ -48,7 +48,7 @@ nebariapp:
           pathType: Exact
     gateway: public
   ui:
-    # hostname: demo.custody.demo.openteams.com
+    # hostname: demo.mystic.openteams.ai
     service:
       name: custody-demo-ui
       port: 8060
@@ -109,8 +109,9 @@ artifacts:
 # GPU scheduling (for custody-tools when gpu=true)
 # =============================================================================
 gpu:
+  # gpu-small node group (g4dn.xlarge, T4 16 GB, scale-to-zero)
   nodeSelector:
-    nodegroup: gpu
+    eks.amazonaws.com/nodegroup: gpu-small
   tolerations:
     - key: nvidia.com/gpu
       operator: Equal
@@ -139,7 +140,8 @@ services:
       - langfuse-keys
     env:
       - name: LANGFUSE_HOST
-        value: http://langfuse-web.nebari-langfuse-pack.svc:3000
+        # Cluster-provided Langfuse (GitOps repo, namespace "langfuse")
+        value: http://langfuse-web.langfuse.svc:3000
       - name: TOOLS_BASE_URL
         # agent ALWAYS calls the fault proxy — contract §4
         value: http://custody-fault-proxy.nebari-custody-demo-pack.svc:8085
