@@ -1,7 +1,15 @@
 # mystic-software-pack
 
-Nebari software pack repository for the **Mystic LOE-1 demo stack** — four
-template-conformant Helm charts, one ArgoCD repo, four chart paths.
+Nebari software pack repository for the **Mystic LOE-1 demo stack** — two
+template-conformant Helm charts, one ArgoCD repo, two chart paths.
+
+Not deployed from this repo:
+
+- **Langfuse** — the cluster GitOps repo
+  ([openteams-ai/mystic.openteams.ai](https://github.com/openteams-ai/mystic.openteams.ai))
+  deploys `nebari-langfuse-pack` as release `langfuse` in namespace `langfuse`.
+- **Judge** — hosted on OpenRouter (`google/gemini-3.5-flash` by default);
+  the checkmaite chart wires `JUDGE_BASE_URL`/`JUDGE_MODEL`/`JUDGE_API_KEY`.
 
 ## Changelog
 
@@ -42,8 +50,6 @@ template-conformant Helm charts, one ArgoCD repo, four chart paths.
 |-------|-----------|----------|-----------|-------|
 | `charts/custody-demo` | `nebari-custody-demo-pack` | custody-agent (8080), custody-tools (8090), custody-fault-proxy (8085), custody-demo-ui (8060) | agent + ui only | Multi-service; see §Multi-service adaptation |
 | `charts/checkmaite` | `nebari-checkmaite-pack` | checkmaite-serve (5006) | yes | Includes nightly eval CronJob |
-| `charts/judge` | `nebari-judge-pack` | judge/vLLM (8000) | none (cluster-internal) | GPU; weight-cache PVC |
-| `charts/langfuse` | `nebari-langfuse-pack` | langfuse-web + worker + deps | yes | Wraps official langfuse chart; /api/public/* bypasses Keycloak |
 
 All charts are **NebariApp-conformant**:
 `apiVersion: reconcilers.nebari.dev/v1 / kind: NebariApp` (per the
@@ -52,8 +58,9 @@ All charts are **NebariApp-conformant**:
 
 ## How ArgoCD consumes this repo
 
-Four ArgoCD `Application` resources point at the **same `repoURL`** with
-different `path:` values:
+Two ArgoCD `Application` resources (added to the cluster GitOps repo's
+`apps/apps/` directory) point at the **same `repoURL`** with different
+`path:` values:
 
 ```yaml
 # custody-demo
@@ -66,9 +73,9 @@ source:
       nebariapp:
         enabled: true
         agent:
-          hostname: agent.custody.demo.openteams.com
+          hostname: agent.mystic.openteams.ai
         ui:
-          hostname: demo.custody.demo.openteams.com
+          hostname: demo.mystic.openteams.ai
 
 # checkmaite
 source:
@@ -79,56 +86,24 @@ source:
     valuesObject:
       nebariapp:
         enabled: true
-        hostname: checkmaite.custody.demo.openteams.com
+        hostname: checkmaite.mystic.openteams.ai
       image:
         repository: <ECR>/checkmaite
-
-# judge
-source:
-  repoURL: https://github.com/openteams/mystic-software-pack
-  path: charts/judge
-  helm:
-    releaseName: judge
-
-# langfuse
-source:
-  repoURL: https://github.com/openteams/mystic-software-pack
-  path: charts/langfuse
-  helm:
-    releaseName: langfuse
-    valuesObject:
-      nebariapp:
-        enabled: true
-        hostname: langfuse.custody.demo.openteams.com
-      langfuse:
-        langfuse:
-          nextauth:
-            url: https://langfuse.custody.demo.openteams.com
-        postgresql:
-          auth:
-            password: "<from vault>"
-        ...
 ```
 
 ## Local helm-template instructions
 
 ```bash
-# Install/update dependencies (langfuse subchart)
-cd dev && make dep
+# Lint both charts
+cd dev && make lint
 
-# Lint all four charts
-make lint
-
-# Render-check all four charts
+# Render-check both charts
 make template
 
 # Or individually
-make lint-langfuse
+make lint-checkmaite
 make template-custody-demo
 ```
-
-For langfuse, `helm dependency update charts/langfuse/` must be run before
-any lint or template operation (the langfuse subchart `.tgz` is not committed).
 
 ## Multi-service NebariApp adaptation (custody-demo)
 
@@ -152,7 +127,7 @@ inline credential values in values files.
 
 | Secret name | Keys |
 |-------------|------|
-| `model-api-keys` | `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` |
+| `model-api-keys` | `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`; optional `OPENROUTER_API_KEY` (enables per-run `openrouter/<vendor>/<model>` SUT model IDs) |
 | `langfuse-keys` | `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY` |
 
 ### `charts/checkmaite` (namespace `nebari-checkmaite-pack`)
@@ -160,13 +135,13 @@ inline credential values in values files.
 | Secret name | Keys |
 |-------------|------|
 | `langfuse-keys` | `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY` |
+| `judge-keys` | `OPENROUTER_API_KEY` |
 
-### `charts/langfuse` (namespace `nebari-langfuse-pack`)
-
-| Secret name | Keys |
-|-------------|------|
-| `langfuse-core` | `salt`, `encryption-key`, `nextauth-secret` |
-| `langfuse-init` | `LANGFUSE_INIT_ORG_ID`, `LANGFUSE_INIT_ORG_NAME`, `LANGFUSE_INIT_PROJECT_ID`, `LANGFUSE_INIT_PROJECT_NAME`, `LANGFUSE_INIT_PROJECT_PUBLIC_KEY`, `LANGFUSE_INIT_PROJECT_SECRET_KEY`, `LANGFUSE_INIT_USER_EMAIL`, `LANGFUSE_INIT_USER_NAME`, `LANGFUSE_INIT_USER_PASSWORD` |
+The `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` values are generated inside
+the cluster-provided Langfuse instance (`https://langfuse.mystic.openteams.ai`,
+project settings → API keys).  The `OPENROUTER_API_KEY` comes from
+[openrouter.ai](https://openrouter.ai) (used by the judge; the default judge
+model is `google/gemini-3.5-flash`, overridable via `judge.model`).
 
 ## Swapping stub images (Team 2 handoff)
 
@@ -201,5 +176,5 @@ includes the plugin.  The CronJob clones `custody-benchmarks` at runtime
 
 ## Contract reference
 
-Service names, images, ports, namespaces, and env vars are normative in:
-`/docs/superpowers/plans/2026-06-09-shared-contracts.md` §9
+Service names, images, ports, namespaces, and env vars are normative in the
+`mystic` program repo: `docs/shared-contracts.md` §9.
