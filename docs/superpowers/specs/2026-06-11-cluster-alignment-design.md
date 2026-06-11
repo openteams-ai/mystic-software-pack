@@ -2,7 +2,8 @@
 
 **Date:** 2026-06-11
 **Status:** Approved
-**Repos touched:** `mystic-software-pack` (primary), `mystic` program repo (contract sync only)
+**Repos touched:** `mystic-software-pack` (primary), `checkmaite-plugin-custody` (judge model/auth support), `mystic` program repo (contract sync)
+**Revised:** 2026-06-11 — judge moved from self-hosted vLLM to OpenRouter (`google/gemini-3.5-flash`); `charts/judge` retired
 
 ## Context
 
@@ -22,24 +23,33 @@ defaults in the remaining charts that don't match the cluster.
 | Decision | Choice |
 |---|---|
 | Langfuse chart | Retire; consume the cluster-provided instance |
-| Judge GPU placement | Configurable; default = `gpu-small` (g4dn.xlarge T4) serving the 3B model; commented H100 profile |
-| Namespaces | Keep contract names (`nebari-custody-demo-pack`, `nebari-judge-pack`, etc.) |
+| Judge | **Hosted on OpenRouter** (no self-hosted vLLM): retire `charts/judge`; default model `google/gemini-3.5-flash` (vision + json_object, verified available); new `judge-keys` secret with key `OPENROUTER_API_KEY` |
+| Judge plugin support | Included in this pass: `JUDGE_MODEL` + `JUDGE_API_KEY` support in `checkmaite-plugin-custody` (client hardcodes `model: "judge"`, sends no auth header today) |
+| Planner (SUT) model | Unchanged: `claude-sonnet-4-6` via native Anthropic adapter. The agent already supports `openrouter/<vendor>/<model>` per-run model IDs; adding `OPENROUTER_API_KEY` to the `model-api-keys` secret enables them with zero chart changes |
+| Namespaces | Keep contract names (`nebari-custody-demo-pack`, etc.) |
 | RWX storage class | `longhorn` (cluster standard; `efs-sc` is unverified there) |
 | Contract docs | Update `mystic/docs/shared-contracts.md` in the same pass |
 
 ## Changes
 
-### 1. Retire `charts/langfuse/`
+### 1. Retire `charts/langfuse/` AND `charts/judge/`
 
-- Delete the chart directory (including the fetched `charts/` dependency).
+The pack drops from four charts to **two** (custody-demo, checkmaite):
+Langfuse is cluster-provided, and the judge becomes a hosted OpenRouter
+endpoint (no vLLM, no GPU scheduling, no weight-cache PVC).
+
+- Delete both chart directories (including langfuse's fetched `charts/`
+  dependency).
 - `dev/Makefile`: remove the `dep` target (langfuse was the only chart with
-  dependencies), `lint-langfuse`, `template-langfuse`; update `.PHONY`, `all`,
-  `lint`, `template` aggregates and header comments.
-- `.github/workflows/lint.yaml`: remove the langfuse dependency-update step and
-  the langfuse lint/template steps (CI must keep mirroring the Makefile).
-- `README.md`: drop the langfuse chart row and its ArgoCD example; add a note
-  that Langfuse is provided by the cluster GitOps repo (`nebari-langfuse-pack`,
-  namespace `langfuse`) and consumed via the `langfuse-keys` secret.
+  dependencies), `lint-langfuse`, `template-langfuse`, `lint-judge`,
+  `template-judge`; update `.PHONY`, `all`, `lint`, `template` aggregates and
+  header comments.
+- `.github/workflows/lint.yaml`: remove the langfuse dependency-update step
+  and the langfuse + judge lint/template steps (CI must keep mirroring the
+  Makefile).
+- `README.md`: drop the langfuse and judge chart rows and ArgoCD examples; add
+  notes that Langfuse is provided by the cluster GitOps repo
+  (`nebari-langfuse-pack`, namespace `langfuse`) and the judge is OpenRouter.
 
 ### 2. Langfuse URL
 
@@ -50,33 +60,59 @@ The deployed instance lives in namespace `langfuse`, so the in-cluster URL is
 - `charts/checkmaite/values.yaml` — `langfuse.host`
 - `charts/custody-demo/values.yaml` — the `LANGFUSE_HOST` env default
 
-### 3. Judge: configurable GPU profile, default T4 + 3B
+### 3. Judge: OpenRouter endpoint
 
-`charts/judge/values.yaml`:
+`charts/checkmaite/values.yaml`:
 
-- `model.useFallback: true` → `Qwen/Qwen2.5-VL-3B-Instruct` serves by default
-  (7B stays as `model.primary` for larger GPUs).
-- `nodeSelector`: `eks.amazonaws.com/nodegroup: gpu-small` (replaces
-  `nodegroup: gpu`, which matches nothing on this cluster). Keep the existing
-  `nvidia.com/gpu` toleration.
-- Add a commented-out H100 profile: `nodeSelector` `gpu.type: h100`, toleration
-  for the `gpu.type=h100:NoSchedule` taint, `useFallback: false`.
-- Right-size resources for g4dn.xlarge (4 vCPU / 16 GiB): requests
-  `cpu: "2"` / `memory: 8Gi`, limits `memory: 12Gi` (GPU request/limit stay
-  `nvidia.com/gpu: 1`). Note that the 4 Gi `/dev/shm` emptyDir
-  (`medium: Memory`) counts against the container memory limit.
+- `endpoints.judgeBaseUrl: https://openrouter.ai/api/v1`
+- New `judge:` block: `secretName: judge-keys` (K8s Secret with key
+  `OPENROUTER_API_KEY`), `model: google/gemini-3.5-flash` (vision-capable,
+  supports `response_format: json_object`; verified on OpenRouter's model
+  catalog 2026-06-11).
 
-`charts/custody-demo/values.yaml` has the same stale selector in its shared
-`gpu:` block (used by custody-tools when `gpu: true`):
-`gpu.nodeSelector` also changes from `nodegroup: gpu` to
-`eks.amazonaws.com/nodegroup: gpu-small`.
+`charts/checkmaite/templates/deployment.yaml` and
+`templates/cronjob-nightly.yaml` gain two env vars next to `JUDGE_BASE_URL`:
+`JUDGE_MODEL` (from `.Values.judge.model`) and `JUDGE_API_KEY`
+(secretKeyRef → `.Values.judge.secretName` / `OPENROUTER_API_KEY`).
+
+### 3b. Plugin: judge model + auth support (`checkmaite-plugin-custody` repo)
+
+`judge_client.py` hardcodes `"model": "judge"` and sends no Authorization
+header — OpenRouter rejects both. Changes (TDD with the existing respx
+patterns in `tests/test_judge_client.py`):
+
+- `JudgeClient.__init__` gains `model: str | None = None` and
+  `api_key: str | None = None`; fallbacks `$JUDGE_MODEL` (default `"judge"`)
+  and `$JUDGE_API_KEY` (default none), mirroring the existing `base_url` /
+  `$JUDGE_BASE_URL` pattern.
+- `_chat()` sends `"model": self._model` and, when an API key is present, a
+  per-request `Authorization: Bearer <key>` header (per-request so injected
+  `httpx.Client`s work unchanged).
+- Backward compatible: with no env/args set, behavior is byte-identical to
+  today (model `"judge"`, no auth header).
+
+### 3c. Custody-demo GPU selector (custody-tools still runs on GPU)
+
+`charts/custody-demo/values.yaml` shared `gpu:` block (used by custody-tools
+when `gpu: true`): `gpu.nodeSelector` changes from `nodegroup: gpu` (matches
+nothing on this cluster) to `eks.amazonaws.com/nodegroup: gpu-small`. The
+H100 node group is no longer needed by anything in this pack.
+
+### 3d. Planner (SUT) stays native Anthropic
+
+`nightlyEval.modelId: claude-sonnet-4-6` is unchanged. For per-run OpenRouter
+SUT experiments (`model_id: openrouter/<vendor>/<model>`, already supported by
+the agent's adapter resolver), add `OPENROUTER_API_KEY` to the existing
+`model-api-keys` secret — documentation only, no chart change
+(`envFromSecrets` injects every key).
 
 ### 4. Storage classes
 
 `efs-sc` → `longhorn`:
 
-- `charts/judge/values.yaml` — `cache.storageClassName`
 - `charts/checkmaite/values.yaml` — `analytics.storageClassName`
+
+(The judge weight-cache PVC disappears with the judge chart.)
 
 ### 5. Hostname placeholders
 
@@ -94,21 +130,34 @@ belongs to the GitOps repo, out of scope here.)
 `docs/shared-contracts.md`:
 
 - §6: `LANGFUSE_HOST=http://langfuse-web.langfuse.svc:3000`
-- §9: langfuse service entry → namespace `langfuse`; note that Langfuse is
-  cluster-provided (GitOps repo), not deployed by the software pack.
+- §7: judge is no longer self-hosted vLLM. New contract: OpenAI-compatible
+  endpoint `JUDGE_BASE_URL` (default `https://openrouter.ai/api/v1`), model
+  `JUDGE_MODEL` (default `google/gemini-3.5-flash`), bearer auth
+  `JUDGE_API_KEY` from secret `judge-keys` (key `OPENROUTER_API_KEY`).
+- §9: drop the langfuse + judge namespace entries (cluster-provided / hosted);
+  judge row → OpenRouter incl. the `judge-keys` secret reference; analytics
+  row → longhorn. (Contracts list no secrets table — `judge-keys` rides in
+  the Judge row; the optional `OPENROUTER_API_KEY` in `model-api-keys` for
+  per-run OpenRouter SUT models is documented in the pack README only.)
 
 ## Out of scope (tracked for other repos / infra)
 
 - OTel collector exporter config (Tempo + Langfuse OTLP) and the
   `otel-collector.opentelemetry.svc` ExternalName alias — GitOps repo.
 - `custody-demo-data` S3 bucket and IRSA roles — infra/Terraform.
-- `langfuse-keys` and `model-api-keys` secrets — manual bootstrap, keys
-  generated in the deployed Langfuse.
-- Three ArgoCD Application manifests in `mystic.openteams.ai/apps/apps/`
-  (custody-demo, checkmaite, judge) following house conventions.
+- `langfuse-keys`, `model-api-keys`, and `judge-keys` secrets — manual
+  bootstrap (Langfuse keys from the deployed instance; OpenRouter key from
+  openrouter.ai).
+- Two ArgoCD Application manifests in `mystic.openteams.ai/apps/apps/`
+  (custody-demo, checkmaite) following house conventions.
+- Egress: the checkmaite pod must be able to reach `https://openrouter.ai`
+  (default EKS networking allows this; flag if a NetworkPolicy lands later).
 
 ## Verification
 
-- `cd dev && make all` passes (three charts).
-- Judge chart templates cleanly with the H100 profile values overridden.
+- `cd dev && make all` passes (two charts).
+- Rendered checkmaite manifests carry `JUDGE_BASE_URL`, `JUDGE_MODEL`, and a
+  `JUDGE_API_KEY` secretKeyRef in both the Deployment and the CronJob.
+- `uv run pytest` passes in `checkmaite-plugin-custody` (new judge
+  model/auth tests included).
 - CI workflow steps match the Makefile targets one-for-one.

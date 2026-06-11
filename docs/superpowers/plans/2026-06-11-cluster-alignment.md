@@ -2,15 +2,15 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Align `mystic-software-pack` with the already-deployed `mystic.openteams.ai` cluster: retire the redundant langfuse chart, point everything at the cluster-provided Langfuse, make the judge chart fit the cluster's GPU nodes, switch storage to longhorn, and sync the normative contract doc.
+**Goal:** Align `mystic-software-pack` with the already-deployed `mystic.openteams.ai` cluster: retire the langfuse AND judge charts (Langfuse is cluster-provided; the judge becomes a hosted OpenRouter endpoint), wire checkmaite to OpenRouter, add judge model/auth support to the plugin, fix storage/scheduling/hostname defaults, and sync the normative contract doc.
 
-**Architecture:** Pure configuration surgery — no new templates or services. The langfuse chart is deleted (the cluster GitOps repo already deploys `nebari-langfuse-pack`); the three remaining charts get values-default fixes; `mystic/docs/shared-contracts.md` (a sibling repo checkout) is updated in the same pass because it is normative.
+**Architecture:** The pack drops to two charts (custody-demo, checkmaite). The judge is `google/gemini-3.5-flash` via OpenRouter's OpenAI-compatible API; the checkmaite chart passes `JUDGE_BASE_URL`/`JUDGE_MODEL`/`JUDGE_API_KEY` env, and `checkmaite-plugin-custody`'s `JudgeClient` learns to honor the latter two (it currently hardcodes `model: "judge"` with no auth). The planner (SUT) stays `claude-sonnet-4-6` on the native Anthropic adapter.
 
-**Tech Stack:** Helm 3, GNU Make, GitHub Actions. Verification is `helm lint` / `helm template` via `dev/Makefile`; there is no test suite in this repo.
+**Tech Stack:** Helm 3, GNU Make, GitHub Actions; Python 3.11 + httpx/respx + uv (plugin repo).
 
 **Spec:** `docs/superpowers/specs/2026-06-11-cluster-alignment-design.md`
 
-**Working branch:** `cluster-alignment` in `/Users/khan/openteams/mystic/mystic-software-pack` (already created; spec committed). Task 8 commits to the **sibling** repo `/Users/khan/openteams/mystic/mystic` — branch there first.
+**Working branches:** `cluster-alignment` in `mystic-software-pack` (exists). Tasks 6 and 9 touch the **sibling checkouts** `/Users/khan/openteams/mystic/checkmaite-plugin-custody` and `/Users/khan/openteams/mystic/mystic` — branch there first.
 
 **Commit footer for every commit:**
 
@@ -20,35 +20,35 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
 
 ---
 
-### Task 1: Delete the langfuse chart
+### Task 1: Delete the langfuse and judge charts
 
 **Files:**
-- Delete: `charts/langfuse/` (entire directory, including any fetched `charts/*.tgz` dependency)
+- Delete: `charts/langfuse/` and `charts/judge/` (entire directories)
 
-- [ ] **Step 1: Remove the directory**
+- [ ] **Step 1: Remove the directories**
 
 ```bash
 cd /Users/khan/openteams/mystic/mystic-software-pack
-git rm -r charts/langfuse
-rm -rf charts/langfuse   # clears untracked fetched dependencies (.tgz, Chart.lock)
+git rm -r charts/langfuse charts/judge
+rm -rf charts/langfuse charts/judge   # clears untracked fetched deps (.tgz, Chart.lock)
 ```
 
-- [ ] **Step 2: Verify only three charts remain**
+- [ ] **Step 2: Verify only two charts remain**
 
 Run: `ls charts/`
-Expected: `checkmaite  custody-demo  judge`
+Expected: `checkmaite  custody-demo`
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git commit -m "feat!: retire langfuse chart — cluster provides Langfuse via nebari-langfuse-pack"
+git commit -m "feat!: retire langfuse and judge charts — Langfuse is cluster-provided, judge moves to OpenRouter"
 ```
 
-(Use the standard footer. The `!` marks a breaking change: anyone deploying `charts/langfuse` from this repo must switch to the cluster-provided instance.)
+(Standard footer. `!` = breaking: deployments of these chart paths must migrate.)
 
 ---
 
-### Task 2: Rewrite `dev/Makefile` for three charts
+### Task 2: Rewrite `dev/Makefile` for two charts
 
 **Files:**
 - Modify: `dev/Makefile` (full replacement)
@@ -61,34 +61,33 @@ git commit -m "feat!: retire langfuse chart — cluster provides Langfuse via ne
 # Prerequisites: helm 3.8+
 #
 # Usage:
-#   make lint          helm lint all three charts
-#   make template      helm template render-check for all three charts
+#   make lint          helm lint both charts
+#   make template      helm template render-check for both charts
 #   make all           lint + template
 #
 # Individual chart targets:
 #   make lint-custody-demo
 #   make lint-checkmaite
-#   make lint-judge
 #   make template-custody-demo
 #   make template-checkmaite
-#   make template-judge
 #
-# NOTE: Langfuse is NOT deployed from this repo.  The cluster GitOps repo
+# NOTE: Langfuse is NOT deployed from this repo — the cluster GitOps repo
 # (openteams-ai/mystic.openteams.ai) deploys nebari-langfuse-pack as release
-# "langfuse" in namespace "langfuse".
+# "langfuse" in namespace "langfuse".  The judge is NOT self-hosted — the
+# checkmaite chart points at OpenRouter (contract §7).
 
 CHARTS_DIR := ../charts
 
 .PHONY: all lint template \
-        lint-custody-demo lint-checkmaite lint-judge \
-        template-custody-demo template-checkmaite template-judge
+        lint-custody-demo lint-checkmaite \
+        template-custody-demo template-checkmaite
 
 all: lint template
 
 # --------------------------------------------------------------------------
-# lint — validate all three charts
+# lint — validate both charts
 # --------------------------------------------------------------------------
-lint: lint-custody-demo lint-checkmaite lint-judge
+lint: lint-custody-demo lint-checkmaite
 
 lint-custody-demo:
 	helm lint $(CHARTS_DIR)/custody-demo/
@@ -96,13 +95,10 @@ lint-custody-demo:
 lint-checkmaite:
 	helm lint $(CHARTS_DIR)/checkmaite/
 
-lint-judge:
-	helm lint $(CHARTS_DIR)/judge/
-
 # --------------------------------------------------------------------------
-# template — render-check all three charts (both enabled/disabled NebariApp)
+# template — render-check both charts (both enabled/disabled NebariApp)
 # --------------------------------------------------------------------------
-template: template-custody-demo template-checkmaite template-judge
+template: template-custody-demo template-checkmaite
 
 template-custody-demo:
 	@echo "--- custody-demo (nebariapp.enabled=false) ---"
@@ -125,30 +121,19 @@ template-checkmaite:
 		--set nebariapp.hostname=checkmaite.custody.local \
 		--set nightlyEval.enabled=true > /dev/null
 	@echo "checkmaite: OK"
-
-template-judge:
-	@echo "--- judge (default profile: gpu-small + 3B) ---"
-	helm template t $(CHARTS_DIR)/judge/ --set nebariapp.enabled=false > /dev/null
-	@echo "--- judge (7B model path) ---"
-	helm template t $(CHARTS_DIR)/judge/ \
-		--set nebariapp.enabled=false \
-		--set model.useFallback=false > /dev/null
-	@echo "judge: OK"
 ```
-
-(Removed: the `dep` target — langfuse was the only chart with dependencies — plus `lint-langfuse` / `template-langfuse` and their `.PHONY`/aggregate/header mentions. Added: a second judge render exercising the 7B path.)
 
 - [ ] **Step 2: Run the full check**
 
 Run: `cd /Users/khan/openteams/mystic/mystic-software-pack/dev && make all`
-Expected: lint passes for all three charts; template prints `custody-demo: OK`, `checkmaite: OK`, `judge: OK`; exit 0. (Note: `make template-judge` exercises judge values *before* Task 4 edits them — it must pass both before and after.)
+Expected: lint passes for both charts; template prints `custody-demo: OK`, `checkmaite: OK`; exit 0.
 
 - [ ] **Step 3: Commit**
 
 ```bash
 cd /Users/khan/openteams/mystic/mystic-software-pack
 git add dev/Makefile
-git commit -m "chore(dev): drop langfuse targets from Makefile; add 7B render check for judge"
+git commit -m "chore(dev): two-chart Makefile — drop langfuse and judge targets"
 ```
 
 ---
@@ -160,7 +145,7 @@ git commit -m "chore(dev): drop langfuse targets from Makefile; add 7B render ch
 
 - [ ] **Step 1: Delete the langfuse dependency step**
 
-Remove this block (lines ~20–24, directly after the `Set up Helm` step):
+Remove this block (directly after the `Set up Helm` step):
 
 ```yaml
       # ----------------------------------------------------------------
@@ -170,56 +155,42 @@ Remove this block (lines ~20–24, directly after the `Set up Helm` step):
         run: helm dependency update charts/langfuse/
 ```
 
-- [ ] **Step 2: Delete the entire langfuse lint/template section at the end of the file**
+- [ ] **Step 2: Delete the judge section**
 
-Remove everything from the comment banner `# langfuse` through the end of the `Template langfuse (NebariApp enabled)` step (the `Lint langfuse` step, both `Template langfuse` steps, and their `--set ...password=ci` flags).
+Remove the `# judge` comment banner, the `Lint judge` step, and the
+`Template judge (NebariApp disabled — judge is always cluster-internal)` step.
 
-- [ ] **Step 3: Mirror the new judge render in CI**
+- [ ] **Step 3: Delete the langfuse section**
 
-Replace:
+Remove everything from the `# langfuse` comment banner through the end of the
+`Template langfuse (NebariApp enabled)` step (lint + both template steps with
+their `--set ...password=ci` flags).
 
-```yaml
-      - name: Template judge (NebariApp disabled — judge is always cluster-internal)
-        run: helm template t charts/judge/ --set nebariapp.enabled=false
-```
+- [ ] **Step 4: Verify no stale references and exact Makefile mirroring**
 
-with:
-
-```yaml
-      - name: Template judge (NebariApp disabled — judge is always cluster-internal)
-        run: helm template t charts/judge/ --set nebariapp.enabled=false
-
-      - name: Template judge (7B model path)
-        run: |
-          helm template t charts/judge/ \
-            --set nebariapp.enabled=false \
-            --set model.useFallback=false
-```
-
-- [ ] **Step 4: Verify CI mirrors the Makefile one-for-one**
-
-Run: `grep -c "helm " .github/workflows/lint.yaml` and compare against the Makefile target list — there must be exactly: 3 lint commands + 7 template commands (2 custody-demo, 2 checkmaite, 2 judge) = no langfuse mention anywhere.
-Run: `grep -i langfuse .github/workflows/lint.yaml`
+Run: `grep -in "langfuse\|judge" .github/workflows/lint.yaml`
 Expected: no output.
+Remaining helm commands must be exactly: 2 lint (custody-demo, checkmaite) + 4 template (2 custody-demo, 2 checkmaite) — same as the Makefile.
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add .github/workflows/lint.yaml
-git commit -m "ci: drop langfuse steps; mirror Makefile judge 7B render check"
+git commit -m "ci: drop langfuse and judge steps to mirror two-chart Makefile"
 ```
 
 ---
 
-### Task 4: Point checkmaite + custody-demo at the cluster Langfuse; longhorn analytics PVC
+### Task 4: checkmaite chart — OpenRouter judge, cluster Langfuse, longhorn, hostname
 
 **Files:**
-- Modify: `charts/checkmaite/values.yaml` (langfuse host, analytics storage class, hostname placeholder)
-- Modify: `charts/custody-demo/values.yaml` (`LANGFUSE_HOST` env)
+- Modify: `charts/checkmaite/values.yaml`
+- Modify: `charts/checkmaite/templates/deployment.yaml`
+- Modify: `charts/checkmaite/templates/cronjob-nightly.yaml`
 
-- [ ] **Step 1: checkmaite — langfuse host**
+- [ ] **Step 1: values — langfuse host**
 
-In `charts/checkmaite/values.yaml`, replace:
+Replace:
 
 ```yaml
 langfuse:
@@ -241,7 +212,36 @@ langfuse:
   host: http://langfuse-web.langfuse.svc:3000
 ```
 
-- [ ] **Step 2: checkmaite — analytics storage class**
+- [ ] **Step 2: values — judge block (new) directly after the langfuse block**
+
+Insert:
+
+```yaml
+# =============================================================================
+# Judge (hosted OpenRouter endpoint — contract §7)
+# =============================================================================
+judge:
+  # K8s Secret in this namespace with key OPENROUTER_API_KEY
+  secretName: judge-keys
+  # Vision-capable model that supports response_format json_object
+  model: google/gemini-3.5-flash
+```
+
+- [ ] **Step 3: values — judge base URL**
+
+In the `endpoints:` block, replace:
+
+```yaml
+  judgeBaseUrl: http://judge.nebari-judge-pack.svc:8000/v1
+```
+
+with:
+
+```yaml
+  judgeBaseUrl: https://openrouter.ai/api/v1
+```
+
+- [ ] **Step 4: values — analytics storage class**
 
 Replace:
 
@@ -263,23 +263,92 @@ analytics:
   storageClassName: longhorn
 ```
 
-- [ ] **Step 3: checkmaite — hostname placeholder**
+- [ ] **Step 5: values — hostname placeholder**
+
+Replace `# hostname: checkmaite.custody.demo.openteams.com  # Required when enabled` with `# hostname: checkmaite.mystic.openteams.ai  # Required when enabled`.
+
+- [ ] **Step 6: deployment.yaml — judge model + key env**
 
 Replace:
 
 ```yaml
-  # hostname: checkmaite.custody.demo.openteams.com  # Required when enabled
+            - name: JUDGE_BASE_URL
+              value: {{ .Values.endpoints.judgeBaseUrl }}
 ```
 
 with:
 
 ```yaml
-  # hostname: checkmaite.mystic.openteams.ai  # Required when enabled
+            - name: JUDGE_BASE_URL
+              value: {{ .Values.endpoints.judgeBaseUrl }}
+            - name: JUDGE_MODEL
+              value: {{ .Values.judge.model }}
+            - name: JUDGE_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.judge.secretName }}
+                  key: OPENROUTER_API_KEY
 ```
 
-- [ ] **Step 4: custody-demo — LANGFUSE_HOST**
+- [ ] **Step 7: cronjob-nightly.yaml — same env additions**
 
-In `charts/custody-demo/values.yaml`, replace:
+Replace:
+
+```yaml
+                - name: JUDGE_BASE_URL
+                  value: {{ .Values.endpoints.judgeBaseUrl }}
+```
+
+with:
+
+```yaml
+                - name: JUDGE_BASE_URL
+                  value: {{ .Values.endpoints.judgeBaseUrl }}
+                - name: JUDGE_MODEL
+                  value: {{ .Values.judge.model }}
+                - name: JUDGE_API_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Values.judge.secretName }}
+                      key: OPENROUTER_API_KEY
+```
+
+(Note the deeper indentation in the CronJob — match the surrounding entries.)
+
+- [ ] **Step 8: Verify rendered env**
+
+Run:
+
+```bash
+cd /Users/khan/openteams/mystic/mystic-software-pack
+helm template t charts/checkmaite/ \
+  --set image.repository=registry.example.com/checkmaite \
+  --set nightlyEval.enabled=true \
+  | grep -A6 "JUDGE_"
+```
+
+Expected: `JUDGE_BASE_URL` = `https://openrouter.ai/api/v1`, `JUDGE_MODEL` = `google/gemini-3.5-flash`, and a `JUDGE_API_KEY` secretKeyRef (`judge-keys` / `OPENROUTER_API_KEY`) appear **twice** (Deployment + CronJob).
+
+Run: `cd dev && make lint-checkmaite template-checkmaite && cd ..`
+Expected: lint passes, `checkmaite: OK`.
+
+- [ ] **Step 9: Commit**
+
+```bash
+git add charts/checkmaite/
+git commit -m "feat(checkmaite): OpenRouter judge (gemini-3.5-flash, judge-keys secret); cluster Langfuse; longhorn analytics PVC"
+```
+
+---
+
+### Task 5: custody-demo chart — Langfuse URL, GPU selector, hostnames
+
+**Files:**
+- Modify: `charts/custody-demo/values.yaml`
+
+- [ ] **Step 1: LANGFUSE_HOST**
+
+Replace:
 
 ```yaml
       - name: LANGFUSE_HOST
@@ -294,13 +363,9 @@ with:
         value: http://langfuse-web.langfuse.svc:3000
 ```
 
-- [ ] **Step 5: custody-demo — hostname placeholders**
+- [ ] **Step 2: GPU node selector (shared `gpu:` block, used by custody-tools when `gpu: true`)**
 
-Replace `# hostname: agent.custody.demo.openteams.com` with `# hostname: agent.mystic.openteams.ai`, and `# hostname: demo.custody.demo.openteams.com` with `# hostname: demo.mystic.openteams.ai`.
-
-- [ ] **Step 5b: custody-demo — GPU node selector (shared `gpu:` block, used by custody-tools when `gpu: true`)**
-
-In `charts/custody-demo/values.yaml`, replace:
+Replace:
 
 ```yaml
 gpu:
@@ -319,187 +384,209 @@ gpu:
 
 (The `tolerations` sub-block below it is unchanged.)
 
-- [ ] **Step 6: Verify**
+- [ ] **Step 3: Hostname placeholders**
 
-Run: `grep -rn "nebari-langfuse-pack\|custody.demo.openteams.com\|efs-sc" charts/checkmaite charts/custody-demo`
+Replace `# hostname: agent.custody.demo.openteams.com` with `# hostname: agent.mystic.openteams.ai`, and `# hostname: demo.custody.demo.openteams.com` with `# hostname: demo.mystic.openteams.ai`.
+
+- [ ] **Step 4: Verify**
+
+Run: `grep -rn "nebari-langfuse-pack\|custody.demo.openteams.com\|nodegroup: gpu$" charts/custody-demo/`
 Expected: no output.
-Run: `cd dev && make template-checkmaite template-custody-demo && cd ..`
-Expected: `checkmaite: OK`, `custody-demo: OK`.
+Run: `cd dev && make lint-custody-demo template-custody-demo && cd ..`
+Expected: lint passes, `custody-demo: OK`.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add charts/custody-demo/values.yaml
+git commit -m "feat(custody-demo): cluster Langfuse URL; gpu-small selector; mystic.openteams.ai hostnames"
+```
+
+---
+
+### Task 6: Plugin — JUDGE_MODEL + JUDGE_API_KEY support (sibling repo, TDD)
+
+**Files:**
+- Modify: `/Users/khan/openteams/mystic/checkmaite-plugin-custody/src/checkmaite_plugin_custody/judge_client.py`
+- Test: `/Users/khan/openteams/mystic/checkmaite-plugin-custody/tests/test_judge_client.py`
+
+**Note:** Separate git checkout. Branch first. Uses uv, not Poetry.
+
+- [ ] **Step 1: Branch**
+
+```bash
+cd /Users/khan/openteams/mystic/checkmaite-plugin-custody
+git status --short          # must be clean before branching
+git checkout -b judge-openrouter
+```
+
+- [ ] **Step 2: Write the failing tests**
+
+Append to `tests/test_judge_client.py` (it already imports `json`, `httpx`, `pytest`, `respx`, `JudgeClient`, and defines `JUDGE_URL`, `rubrics_dir`, `_completion`):
+
+```python
+@respx.mock
+def test_judge_model_and_auth_from_constructor(rubrics_dir: Path) -> None:
+    route = respx.post(f"{JUDGE_URL}/chat/completions").mock(
+        return_value=_completion('{"score": 1.0, "reasons": "ok"}')
+    )
+    client = JudgeClient(
+        base_url=JUDGE_URL,
+        rubrics_dir=rubrics_dir,
+        model="google/gemini-3.5-flash",
+        api_key="sk-or-test",
+    )
+    client.judge_citation("aGVsbG8=", "white SUV")
+
+    request = route.calls.last.request
+    assert json.loads(request.content)["model"] == "google/gemini-3.5-flash"
+    assert request.headers["Authorization"] == "Bearer sk-or-test"
+
+
+@respx.mock
+def test_judge_model_and_auth_from_env(
+    rubrics_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("JUDGE_MODEL", "google/gemini-3.5-flash")
+    monkeypatch.setenv("JUDGE_API_KEY", "sk-or-env")
+    route = respx.post(f"{JUDGE_URL}/chat/completions").mock(
+        return_value=_completion('{"score": 1.0, "reasons": "ok"}')
+    )
+    client = JudgeClient(base_url=JUDGE_URL, rubrics_dir=rubrics_dir)
+    client.judge_citation("aGVsbG8=", "white SUV")
+
+    request = route.calls.last.request
+    assert json.loads(request.content)["model"] == "google/gemini-3.5-flash"
+    assert request.headers["Authorization"] == "Bearer sk-or-env"
+
+
+@respx.mock
+def test_judge_defaults_unchanged_without_model_or_key(
+    rubrics_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("JUDGE_MODEL", raising=False)
+    monkeypatch.delenv("JUDGE_API_KEY", raising=False)
+    route = respx.post(f"{JUDGE_URL}/chat/completions").mock(
+        return_value=_completion('{"score": 1.0, "reasons": "ok"}')
+    )
+    client = JudgeClient(base_url=JUDGE_URL, rubrics_dir=rubrics_dir)
+    client.judge_citation("aGVsbG8=", "white SUV")
+
+    request = route.calls.last.request
+    assert json.loads(request.content)["model"] == "judge"
+    assert "Authorization" not in request.headers
+```
+
+- [ ] **Step 3: Run the new tests — they must fail**
+
+Run: `uv run pytest tests/test_judge_client.py -v -k "model_and_auth or defaults_unchanged"`
+Expected: `test_judge_model_and_auth_from_constructor` and `test_judge_model_and_auth_from_env` FAIL (`TypeError: unexpected keyword argument 'model'` / model assertion); `test_judge_defaults_unchanged_without_model_or_key` PASSES (documents current behavior).
+
+- [ ] **Step 4: Implement**
+
+In `src/checkmaite_plugin_custody/judge_client.py`:
+
+(a) Below `DEFAULT_JUDGE_BASE_URL = "http://judge.nebari-judge-pack.svc:8000/v1"` add:
+
+```python
+DEFAULT_JUDGE_MODEL = "judge"
+```
+
+(b) Extend `__init__` — replace:
+
+```python
+    def __init__(
+        self,
+        base_url: str | None = None,
+        rubrics_dir: str | Path | None = None,
+        timeout_s: float = 120.0,
+        http: httpx.Client | None = None,
+    ) -> None:
+        self._base_url = (base_url or os.environ.get("JUDGE_BASE_URL", DEFAULT_JUDGE_BASE_URL)).rstrip("/")
+```
+
+with:
+
+```python
+    def __init__(
+        self,
+        base_url: str | None = None,
+        rubrics_dir: str | Path | None = None,
+        timeout_s: float = 120.0,
+        http: httpx.Client | None = None,
+        model: str | None = None,
+        api_key: str | None = None,
+    ) -> None:
+        self._base_url = (base_url or os.environ.get("JUDGE_BASE_URL", DEFAULT_JUDGE_BASE_URL)).rstrip("/")
+        self._model = model or os.environ.get("JUDGE_MODEL", DEFAULT_JUDGE_MODEL)
+        self._api_key = api_key or os.environ.get("JUDGE_API_KEY")
+```
+
+Also extend the class docstring's parameter list with:
+
+```
+    model:
+        Model name sent in the chat payload.  Falls back to ``$JUDGE_MODEL``
+        then ``"judge"`` (the self-hosted contract name).  For OpenRouter use
+        the catalog slug, e.g. ``google/gemini-3.5-flash``.
+    api_key:
+        Bearer token for hosted endpoints (e.g. OpenRouter).  Falls back to
+        ``$JUDGE_API_KEY``; when unset no Authorization header is sent.
+```
+
+(c) In `_chat()`, replace:
+
+```python
+        payload = {
+            "model": "judge",
+```
+
+with:
+
+```python
+        payload = {
+            "model": self._model,
+```
+
+and replace the POST call:
+
+```python
+                response = self._http.post(f"{self._base_url}/chat/completions", json=payload)
+```
+
+with:
+
+```python
+                headers = {"Authorization": f"Bearer {self._api_key}"} if self._api_key else {}
+                response = self._http.post(
+                    f"{self._base_url}/chat/completions", json=payload, headers=headers
+                )
+```
+
+(Per-request headers, not client-level, so caller-injected `httpx.Client`s keep working.)
+
+- [ ] **Step 5: Run the new tests — all pass**
+
+Run: `uv run pytest tests/test_judge_client.py -v`
+Expected: all tests in the file PASS (the pre-existing ones prove backward compat — they assert `payload["model"] == "judge"`).
+
+- [ ] **Step 6: Run the full suite**
+
+Run: `uv run pytest`
+Expected: full suite passes.
 
 - [ ] **Step 7: Commit**
 
 ```bash
-git add charts/checkmaite/values.yaml charts/custody-demo/values.yaml
-git commit -m "feat: consume cluster-provided Langfuse; longhorn analytics PVC; gpu-small selector; mystic.openteams.ai hostnames"
+git add src/checkmaite_plugin_custody/judge_client.py tests/test_judge_client.py
+git commit -m "feat(judge): JUDGE_MODEL and JUDGE_API_KEY support for hosted OpenAI-compatible endpoints (OpenRouter)"
 ```
+
+(Standard footer.)
 
 ---
 
-### Task 5: Judge chart — GPU profile defaults + right-sized resources + longhorn cache
-
-**Files:**
-- Modify: `charts/judge/values.yaml`
-
-- [ ] **Step 1: Default to the 3B model (fits gpu-small / T4)**
-
-Replace:
-
-```yaml
-model:
-  # primary model — Qwen2.5-VL-7B-Instruct
-  primary: Qwen/Qwen2.5-VL-7B-Instruct
-  # fallback — flip useFallback: true if 7B OOMs on the GPU node
-  fallback: Qwen/Qwen2.5-VL-3B-Instruct
-  useFallback: false
-```
-
-with:
-
-```yaml
-model:
-  # primary model — Qwen2.5-VL-7B-Instruct (~15 GB fp16 weights; needs the
-  # H100 profile below, does NOT fit the default T4 node)
-  primary: Qwen/Qwen2.5-VL-7B-Instruct
-  # fallback — Qwen2.5-VL-3B-Instruct fits gpu-small (g4dn.xlarge, T4 16 GB)
-  fallback: Qwen/Qwen2.5-VL-3B-Instruct
-  # Default profile serves the 3B fallback; set false with the H100 profile.
-  useFallback: true
-```
-
-- [ ] **Step 2: Longhorn weight cache**
-
-Replace:
-
-```yaml
-cache:
-  storageClassName: efs-sc
-  size: 100Gi
-```
-
-with:
-
-```yaml
-cache:
-  storageClassName: longhorn
-  size: 100Gi
-```
-
-- [ ] **Step 3: GPU scheduling — gpu-small default, commented H100 profile**
-
-Replace:
-
-```yaml
-nodeSelector:
-  nodegroup: gpu
-
-tolerations:
-  - key: nvidia.com/gpu
-    operator: Equal
-    value: "true"
-    effect: NoSchedule
-```
-
-with:
-
-```yaml
-# Default profile: gpu-small node group (g4dn.xlarge, T4 16 GB, scale-to-zero).
-nodeSelector:
-  eks.amazonaws.com/nodegroup: gpu-small
-
-tolerations:
-  - key: nvidia.com/gpu
-    operator: Equal
-    value: "true"
-    effect: NoSchedule
-
-# --- H100 profile (gpu-large, p5.4xlarge) -----------------------------------
-# To serve the 7B model: set model.useFallback=false and REPLACE the
-# nodeSelector/tolerations above with the following (the gpu-large node group
-# is tainted gpu.type=h100:NoSchedule):
-#
-# nodeSelector:
-#   gpu.type: h100
-# tolerations:
-#   - key: gpu.type
-#     operator: Equal
-#     value: h100
-#     effect: NoSchedule
-```
-
-- [ ] **Step 4: Right-size resources for g4dn.xlarge**
-
-Replace:
-
-```yaml
-resources:
-  requests:
-    cpu: "3"
-    memory: 10Gi
-    nvidia.com/gpu: 1
-  limits:
-    memory: 13Gi
-    nvidia.com/gpu: 1
-```
-
-with:
-
-```yaml
-# Sized for g4dn.xlarge (4 vCPU / 16 GiB).  The 4 Gi /dev/shm emptyDir
-# (medium: Memory) counts against the container memory limit.
-resources:
-  requests:
-    cpu: "2"
-    memory: 8Gi
-    nvidia.com/gpu: 1
-  limits:
-    memory: 12Gi
-    nvidia.com/gpu: 1
-```
-
-- [ ] **Step 5: Verify default profile renders the 3B model on gpu-small**
-
-Run:
-
-```bash
-helm template t charts/judge/ --set nebariapp.enabled=false | grep -E "Qwen|nodegroup|longhorn"
-```
-
-Expected output includes `Qwen/Qwen2.5-VL-3B-Instruct`, `eks.amazonaws.com/nodegroup: gpu-small`, and `storageClassName: longhorn`. It must NOT include `7B`.
-
-- [ ] **Step 6: Verify the H100 profile renders cleanly (spec verification item)**
-
-Run:
-
-```bash
-helm template t charts/judge/ \
-  --set nebariapp.enabled=false \
-  --set model.useFallback=false \
-  --set 'nodeSelector.gpu\.type=h100' \
-  --set 'nodeSelector.eks\.amazonaws\.com/nodegroup=null' \
-  --set 'tolerations[0].key=gpu.type' \
-  --set 'tolerations[0].operator=Equal' \
-  --set 'tolerations[0].value=h100' \
-  --set 'tolerations[0].effect=NoSchedule' \
-  | grep -E "Qwen|gpu.type"
-```
-
-Expected output includes `Qwen/Qwen2.5-VL-7B-Instruct` and `gpu.type: h100`; no template errors.
-
-- [ ] **Step 7: Run the chart checks**
-
-Run: `cd dev && make lint-judge template-judge && cd ..`
-Expected: lint passes, `judge: OK`.
-
-- [ ] **Step 8: Commit**
-
-```bash
-git add charts/judge/values.yaml
-git commit -m "feat(judge): default gpu-small/T4 profile serving 3B; commented H100 profile; longhorn cache; g4dn.xlarge-sized resources"
-```
-
----
-
-### Task 6: README overhaul
+### Task 7: README overhaul
 
 **Files:**
 - Modify: `README.md`
@@ -516,22 +603,28 @@ template-conformant Helm charts, one ArgoCD repo, four chart paths.
 with:
 
 ```markdown
-Nebari software pack repository for the **Mystic LOE-1 demo stack** — three
-template-conformant Helm charts, one ArgoCD repo, three chart paths.
-Langfuse is **not** deployed from this repo; the cluster GitOps repo
-([openteams-ai/mystic.openteams.ai](https://github.com/openteams-ai/mystic.openteams.ai))
-deploys `nebari-langfuse-pack` as release `langfuse` in namespace `langfuse`.
+Nebari software pack repository for the **Mystic LOE-1 demo stack** — two
+template-conformant Helm charts, one ArgoCD repo, two chart paths.
+
+Not deployed from this repo:
+
+- **Langfuse** — the cluster GitOps repo
+  ([openteams-ai/mystic.openteams.ai](https://github.com/openteams-ai/mystic.openteams.ai))
+  deploys `nebari-langfuse-pack` as release `langfuse` in namespace `langfuse`.
+- **Judge** — hosted on OpenRouter (`google/gemini-3.5-flash` by default);
+  the checkmaite chart wires `JUDGE_BASE_URL`/`JUDGE_MODEL`/`JUDGE_API_KEY`.
 ```
 
-- [ ] **Step 2: Chart matrix — drop the langfuse row**
+- [ ] **Step 2: Chart matrix — drop the langfuse and judge rows**
 
-Delete the line:
+Delete the lines:
 
 ```markdown
+| `charts/judge` | `nebari-judge-pack` | judge/vLLM (8000) | none (cluster-internal) | GPU; weight-cache PVC |
 | `charts/langfuse` | `nebari-langfuse-pack` | langfuse-web + worker + deps | yes | Wraps official langfuse chart; /api/public/* bypasses Keycloak |
 ```
 
-- [ ] **Step 3: ArgoCD section — three apps, mystic.openteams.ai hostnames**
+- [ ] **Step 3: ArgoCD section — two apps, mystic.openteams.ai hostnames**
 
 Replace the sentence:
 
@@ -543,12 +636,12 @@ different `path:` values:
 with:
 
 ```markdown
-Three ArgoCD `Application` resources (added to the cluster GitOps repo's
+Two ArgoCD `Application` resources (added to the cluster GitOps repo's
 `apps/apps/` directory) point at the **same `repoURL`** with different
 `path:` values:
 ```
 
-In the YAML example, replace `agent.custody.demo.openteams.com` → `agent.mystic.openteams.ai`, `demo.custody.demo.openteams.com` → `demo.mystic.openteams.ai`, `checkmaite.custody.demo.openteams.com` → `checkmaite.mystic.openteams.ai`, and delete the entire `# langfuse` block (from the `# langfuse` comment line through the `...` line, inclusive).
+In the YAML example: replace `agent.custody.demo.openteams.com` → `agent.mystic.openteams.ai`, `demo.custody.demo.openteams.com` → `demo.mystic.openteams.ai`, `checkmaite.custody.demo.openteams.com` → `checkmaite.mystic.openteams.ai`; delete the entire `# judge` block (3 lines + blank line) and the entire `# langfuse` block (from the `# langfuse` comment through the `...` line, inclusive).
 
 - [ ] **Step 4: Local helm-template section — no more dep step**
 
@@ -575,14 +668,14 @@ with:
 
 ```markdown
 ```bash
-# Lint all three charts
+# Lint both charts
 cd dev && make lint
 
-# Render-check all three charts
+# Render-check both charts
 make template
 
 # Or individually
-make lint-judge
+make lint-checkmaite
 make template-custody-demo
 ```
 ```
@@ -594,14 +687,30 @@ For langfuse, `helm dependency update charts/langfuse/` must be run before
 any lint or template operation (the langfuse subchart `.tgz` is not committed).
 ```
 
-- [ ] **Step 5: Required secrets — drop the langfuse section, note key provenance**
+- [ ] **Step 5: Required secrets — update tables**
 
-Delete the `### charts/langfuse (namespace nebari-langfuse-pack)` heading and its table (the `langfuse-core` and `langfuse-init` rows). After the `charts/checkmaite` secrets table, add:
+Delete the `### charts/langfuse (namespace nebari-langfuse-pack)` heading and its table (the `langfuse-core` and `langfuse-init` rows).
+
+In the `### charts/checkmaite (namespace nebari-checkmaite-pack)` table, add a row:
+
+```markdown
+| `judge-keys` | `OPENROUTER_API_KEY` |
+```
+
+In the `### charts/custody-demo (namespace nebari-custody-demo-pack)` section, change the `model-api-keys` row to:
+
+```markdown
+| `model-api-keys` | `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`; optional `OPENROUTER_API_KEY` (enables per-run `openrouter/<vendor>/<model>` SUT model IDs) |
+```
+
+After the checkmaite secrets table, add:
 
 ```markdown
 The `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` values are generated inside
 the cluster-provided Langfuse instance (`https://langfuse.mystic.openteams.ai`,
-project settings → API keys).
+project settings → API keys).  The `OPENROUTER_API_KEY` comes from
+[openrouter.ai](https://openrouter.ai) (used by the judge; the default judge
+model is `google/gemini-3.5-flash`, overridable via `judge.model`).
 ```
 
 - [ ] **Step 6: Fix the contract reference path**
@@ -622,22 +731,19 @@ Service names, images, ports, namespaces, and env vars are normative in the
 
 - [ ] **Step 7: Verify**
 
-Run: `grep -in "langfuse" README.md`
-Expected: hits only in the intro note, the secrets-provenance note, and the key tables (`langfuse-keys` rows) — no chart-matrix row, no ArgoCD example, no `make *-langfuse` targets, no `charts/langfuse` path.
-Run: `grep -in "four charts\|four chart paths\|custody.demo.openteams.com" README.md`
-Expected: no output. (Note: "four-service chart" in the changelog and chart
-matrix is correct — custody-demo really has four services — and must stay.)
+Run: `grep -in "four charts\|four chart paths\|custody.demo.openteams.com\|charts/langfuse\|charts/judge\|nebari-judge-pack" README.md`
+Expected: no output. ("four-service chart" in the changelog/matrix is correct — custody-demo really has four services — and must stay.)
 
 - [ ] **Step 8: Commit**
 
 ```bash
 git add README.md
-git commit -m "docs: README for three-chart pack; cluster-provided Langfuse; mystic.openteams.ai examples"
+git commit -m "docs: README for two-chart pack; OpenRouter judge; cluster Langfuse; mystic.openteams.ai examples"
 ```
 
 ---
 
-### Task 7: Full-repo verification sweep
+### Task 8: Full-repo verification sweep
 
 **Files:** none (verification only)
 
@@ -647,7 +753,7 @@ Run:
 
 ```bash
 cd /Users/khan/openteams/mystic/mystic-software-pack
-grep -rn "nebari-langfuse-pack\|custody\.demo\.openteams\.com\|efs-sc\|nodegroup: gpu$" \
+grep -rn "nebari-langfuse-pack\|nebari-judge-pack\|custody\.demo\.openteams\.com\|efs-sc\|nodegroup: gpu$" \
   --include="*.yaml" --include="*.md" --include="Makefile" \
   . | grep -v "docs/superpowers/"
 ```
@@ -657,7 +763,7 @@ Expected: no output (the `docs/superpowers/` exclusion covers the historical spe
 - [ ] **Step 2: Full make check**
 
 Run: `cd dev && make all`
-Expected: all three charts lint and template clean, exit 0.
+Expected: both charts lint and template clean, exit 0.
 
 - [ ] **Step 3: Commit (only if the sweep forced fixes)**
 
@@ -665,12 +771,12 @@ If Steps 1–2 required edits, commit them as `fix: <what>` with the standard fo
 
 ---
 
-### Task 8: Contract sync in the mystic program repo
+### Task 9: Contract sync in the mystic program repo
 
 **Files:**
-- Modify: `/Users/khan/openteams/mystic/mystic/docs/shared-contracts.md` (§6 line ~185, §9 lines ~253, ~256, ~258)
+- Modify: `/Users/khan/openteams/mystic/mystic/docs/shared-contracts.md` (§6, §7, §9)
 
-**Note:** This is a *separate git checkout* (the program repo). Branch before editing.
+**Note:** Separate git checkout. Branch first.
 
 - [ ] **Step 1: Branch**
 
@@ -695,7 +801,50 @@ with:
   `langfuse` in namespace `langfuse`),
 ```
 
-- [ ] **Step 3: §9 — Namespaces row**
+- [ ] **Step 3: §7 — judge contract rewrite (full-section replacement)**
+
+Replace the entire §7 body:
+
+```markdown
+OpenAI-compatible vLLM endpoint:
+`http://judge.nebari-judge-pack.svc:8000/v1`, model name `judge`
+(serving `Qwen/Qwen2.5-VL-7B-Instruct`). Judge rubric prompts live in
+`custody-benchmarks/rubrics/*.md`. Judge calls request
+`response_format={"type": "json_object"}` and must return
+`{"score": float, "reasons": str}`.
+```
+
+with:
+
+```markdown
+OpenAI-compatible **hosted** endpoint (OpenRouter):
+`JUDGE_BASE_URL` (default `https://openrouter.ai/api/v1`), model
+`JUDGE_MODEL` (default `google/gemini-3.5-flash` — must be vision-capable and
+support JSON-object response format), bearer auth `JUDGE_API_KEY` sourced
+from K8s Secret `judge-keys` (key `OPENROUTER_API_KEY`) in the checkmaite
+namespace. The plugin's `JudgeClient` falls back to model name `judge` and no
+Authorization header when these env vars are unset (self-hosted
+compatibility). Judge rubric prompts live in
+`custody-benchmarks/rubrics/*.md`. Judge calls request
+`response_format={"type": "json_object"}` and must return
+`{"score": float, "reasons": str}`.
+```
+
+- [ ] **Step 4: §9 — judge row**
+
+Replace:
+
+```markdown
+| Judge | vLLM, port 8000, served model name `judge` |
+```
+
+with:
+
+```markdown
+| Judge | hosted OpenRouter endpoint (`https://openrouter.ai/api/v1`), default model `google/gemini-3.5-flash`, auth via Secret `judge-keys` key `OPENROUTER_API_KEY` |
+```
+
+- [ ] **Step 5: §9 — Namespaces row**
 
 Replace:
 
@@ -706,10 +855,10 @@ Replace:
 with:
 
 ```markdown
-| Namespaces | one per pack: `nebari-checkmaite-pack`, `nebari-judge-pack`, `nebari-custody-demo-pack`. Langfuse is cluster-provided: the GitOps repo (`openteams-ai/mystic.openteams.ai`) deploys `nebari-langfuse-pack` as release `langfuse` in namespace `langfuse` |
+| Namespaces | one per pack: `nebari-checkmaite-pack`, `nebari-custody-demo-pack`. Langfuse is cluster-provided (the GitOps repo `openteams-ai/mystic.openteams.ai` deploys `nebari-langfuse-pack` as release `langfuse` in namespace `langfuse`); the judge is hosted (OpenRouter), no namespace |
 ```
 
-- [ ] **Step 4: §9 — Analytics store row**
+- [ ] **Step 6: §9 — Analytics store row**
 
 Replace:
 
@@ -723,21 +872,27 @@ with:
 | Analytics store path | RWX PVC (longhorn) mounted at `/data/analytics` in checkmaite pack |
 ```
 
-- [ ] **Step 5: §9 — Pack repo row**
+- [ ] **Step 7: §9 — Pack repo row**
 
-In the `| Pack repo |` row, replace the phrase `ONE repo `mystic-software-pack` holding all four charts` with `ONE repo `mystic-software-pack` holding all three charts (custody-demo, checkmaite, judge; Langfuse is cluster-provided)` — leave the rest of the row unchanged.
+In the `| Pack repo |` row, replace the phrase `ONE repo `mystic-software-pack` holding all four charts` with `ONE repo `mystic-software-pack` holding both charts (custody-demo, checkmaite; Langfuse is cluster-provided, the judge is hosted)` — leave the rest of the row unchanged.
 
-- [ ] **Step 6: Verify**
+- [ ] **Step 8: Verify**
 
-Run: `grep -n "nebari-langfuse-pack.svc\|all four charts\|EFS mount" /Users/khan/openteams/mystic/mystic/docs/shared-contracts.md`
-Expected: no output.
+Run:
 
-- [ ] **Step 7: Commit**
+```bash
+grep -n "nebari-langfuse-pack.svc\|nebari-judge-pack\|all four charts\|EFS mount\|vLLM, port 8000" \
+  /Users/khan/openteams/mystic/mystic/docs/shared-contracts.md
+```
+
+Expected: no output. Then skim §7 once more for any remaining self-hosted-vLLM phrasing.
+
+- [ ] **Step 9: Commit**
 
 ```bash
 cd /Users/khan/openteams/mystic/mystic
 git add docs/shared-contracts.md
-git commit -m "docs(contracts): Langfuse is cluster-provided (ns langfuse); longhorn analytics PVC; three-chart pack"
+git commit -m "docs(contracts): OpenRouter judge (gemini-3.5-flash, judge-keys); cluster-provided Langfuse; longhorn analytics; two-chart pack"
 ```
 
 (Standard footer.)
