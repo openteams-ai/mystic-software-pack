@@ -26,7 +26,7 @@ nebariapp:
 # Application image
 # =============================================================================
 image:
-  # repository: <ECR>/checkmaite  # Required — must be injected per-deployment
+  # repository: quay.io/openteams/checkmaite  # Required — must be injected per-deployment
   repository: ""
   tag: "0.1.0"
   pullPolicy: IfNotPresent

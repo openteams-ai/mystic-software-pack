@@ -88,7 +88,7 @@ source:
         enabled: true
         hostname: checkmaite.mystic.openteams.ai
       image:
-        repository: <ECR>/checkmaite
+        repository: quay.io/openteams/checkmaite
 ```
 
 ## Local helm-template instructions
@@ -145,15 +145,18 @@ model is `google/gemini-3.5-flash`, overridable via `judge.model`).
 
 ## Swapping stub images (Team 2 handoff)
 
-`custody-demo` ships `hashicorp/http-echo` stubs.  Swapping to a real image is
-a values-only change in the ArgoCD Application — no chart edits needed:
+`custody-demo` ships `hashicorp/http-echo` stubs.  Real images are published
+by `mystic-custody-agent` CI to **quay.io/openteams** (public; tags `latest`
+and `sha-<short>`): `custody-agent`, `custody-tools`, `custody-fault-proxy`,
+`custody-demo-ui`.  Swapping to a real image is a values-only change in the
+ArgoCD Application — no chart edits needed:
 
 ```yaml
 services:
   custody-agent:
     image:
-      repository: <ECR>/custody-agent
-      tag: "<tag>"
+      repository: quay.io/openteams/custody-agent
+      tag: "sha-<short>"
     args: []   # real image entrypoint takes over
 ```
 
