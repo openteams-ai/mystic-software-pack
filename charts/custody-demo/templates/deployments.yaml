@@ -49,6 +49,18 @@ spec:
           {{- else }}
           emptyDir: {}
           {{- end }}
+        # Writable S3 video cache (CUSTODY_VIDEO_CACHE default /data/video-cache).
+        # Without it the non-root container cannot mkdir under the image's
+        # root-owned /data and every video fetch 503s with EACCES.
+        - name: video-cache
+          emptyDir: {}
+      {{- end }}
+      {{- if eq $name "custody-tools" }}
+      volumes:
+        # Same writable video cache as the agent (tools_service/video.py
+        # downloads and decodes mission clips from S3).
+        - name: video-cache
+          emptyDir: {}
       {{- end }}
       containers:
         - name: {{ $name }}
@@ -97,6 +109,13 @@ spec:
           volumeMounts:
             - name: run-artifacts
               mountPath: /data/artifacts
+            - name: video-cache
+              mountPath: /data/video-cache
+          {{- end }}
+          {{- if eq $name "custody-tools" }}
+          volumeMounts:
+            - name: video-cache
+              mountPath: /data/video-cache
           {{- end }}
           readinessProbe:
             httpGet:
