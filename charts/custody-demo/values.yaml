@@ -175,6 +175,13 @@ services:
         value: http://custody-fault-proxy.nebari-custody-demo-pack.svc:8085
       - name: CUSTODY_RUN_ARTIFACTS
         value: /data/artifacts
+      - name: CUSTODY_PROJECTS_DB
+        # Default is a SIBLING of CUSTODY_RUN_ARTIFACTS (/data/custody-projects.json),
+        # which is root-owned image fs in the non-root container - project
+        # creates 500 on the persist write (and silently survive only
+        # in-memory). Keep the store inside the writable artifacts volume so
+        # it also persists when artifacts move to a PVC.
+        value: /data/artifacts/custody-projects.json
     resources:
       requests:
         cpu: 250m
