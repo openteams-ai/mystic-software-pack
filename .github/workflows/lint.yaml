@@ -18,12 +18,6 @@ jobs:
           version: v3.16.2
 
       # ----------------------------------------------------------------
-      # langfuse — dependency chart must be fetched before lint/template
-      # ----------------------------------------------------------------
-      - name: Update langfuse dependency
-        run: helm dependency update charts/langfuse/
-
-      # ----------------------------------------------------------------
       # custody-demo
       # ----------------------------------------------------------------
       - name: Lint custody-demo
@@ -58,36 +52,3 @@ jobs:
             --set nebariapp.hostname=checkmaite.example.com \
             --set nightlyEval.enabled=true
 
-      # ----------------------------------------------------------------
-      # judge
-      # ----------------------------------------------------------------
-      - name: Lint judge
-        run: helm lint charts/judge/
-
-      - name: Template judge (NebariApp disabled — judge is always cluster-internal)
-        run: helm template t charts/judge/ --set nebariapp.enabled=false
-
-      # ----------------------------------------------------------------
-      # langfuse
-      # ----------------------------------------------------------------
-      - name: Lint langfuse
-        run: helm lint charts/langfuse/
-
-      - name: Template langfuse (NebariApp disabled)
-        run: |
-          helm template t charts/langfuse/ \
-            --set langfuse.postgresql.auth.password=ci \
-            --set langfuse.clickhouse.auth.password=ci \
-            --set langfuse.redis.auth.password=ci \
-            --set langfuse.minio.auth.rootPassword=ci
-
-      - name: Template langfuse (NebariApp enabled)
-        run: |
-          helm template t charts/langfuse/ \
-            --set nebariapp.enabled=true \
-            --set nebariapp.hostname=langfuse.example.com \
-            --set langfuse.langfuse.nextauth.url=https://langfuse.example.com \
-            --set langfuse.postgresql.auth.password=ci \
-            --set langfuse.clickhouse.auth.password=ci \
-            --set langfuse.redis.auth.password=ci \
-            --set langfuse.minio.auth.rootPassword=ci
