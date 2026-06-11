@@ -66,6 +66,23 @@ spec:
               value: {{ $.Values.common.otelExporterOtlpEndpoint }}
             - name: OTEL_SERVICE_NAME
               value: {{ $name }}
+            {{- if and (eq $name "custody-agent") $.Values.nebariapp.enabled ((($.Values.nebariapp.agent).auth).enabled) }}
+            {{- $kc := $.Values.keycloak }}
+            {{- /* Served to the SPA via /config.json (agent_service/app.py) */}}
+            - name: CUSTODY_OIDC_FRONTEND_URL
+              value: {{ $kc.url | quote }}
+            - name: CUSTODY_OIDC_REALM
+              value: {{ $kc.realm | quote }}
+            - name: CUSTODY_OIDC_CLIENT_ID
+              value: {{ $kc.spaClientId | default (printf "%s-custody-agent-spa" $.Release.Namespace) | quote }}
+            {{- /* Bearer-token validation for /v1/custody (agent_service/auth.py) */}}
+            - name: CUSTODY_OIDC_ISSUER
+              value: {{ printf "%s/realms/%s" $kc.url $kc.realm | quote }}
+            - name: CUSTODY_OIDC_JWKS_URL
+              value: {{ printf "%s/realms/%s/protocol/openid-connect/certs" $kc.internalUrl $kc.realm | quote }}
+            - name: CUSTODY_UI_TITLE
+              value: {{ ((($.Values.nebariapp.agent).landingPage).displayName) | default "Mystic Depot" | quote }}
+            {{- end }}
             {{- with $svc.env }}
             {{- toYaml . | nindent 12 }}
             {{- end }}

@@ -113,6 +113,24 @@ make lint-checkmaite
 make template-custody-demo
 ```
 
+## SPA auth wiring (custody-demo)
+
+The agent serves the React SPA's runtime config at `/config.json` from
+`CUSTODY_OIDC_*` env vars and validates API bearer tokens against the realm
+JWKS.  The chart wires both automatically when `nebariapp` auth is enabled:
+
+- `auth.spaClient.enabled: true` on the NebariApp makes the **operator**
+  provision a public PKCE client (`<namespace>-custody-agent-spa`, redirect
+  URIs `https://<hostname>/*`, S256) — same pattern as nebari-chat's
+  `frontend-spa` client.  The confidential client stays gateway-only.
+- The agent Deployment gets `CUSTODY_OIDC_FRONTEND_URL/REALM/CLIENT_ID`
+  (SPA / config.json), `CUSTODY_OIDC_ISSUER` + `CUSTODY_OIDC_JWKS_URL`
+  (API token validation), and `CUSTODY_UI_TITLE`, derived from the
+  `keycloak:` values block.
+
+Without these the agent serves an empty `/config.json`, and keycloak-js
+redirect-loops on its own origin until the request headers overflow (431).
+
 ## Multi-service NebariApp adaptation (custody-demo)
 
 The standard template assumes one NebariApp per chart.  The `custody-demo`
