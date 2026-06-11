@@ -26,6 +26,13 @@ nebariapp:
       enabled: true
       provider: keycloak
       provisionClient: true
+      # Public PKCE client for the React SPA (keycloak-js). The operator
+      # provisions a second, public Keycloak client (default name
+      # <namespace>-custody-agent-spa) with redirect URIs https://<hostname>/*
+      # and S256 enforced — same pattern as nebari-chat's frontend-spa client.
+      # The confidential client above stays gateway-only.
+      spaClient:
+        enabled: true
       scopes:
         - openid
         - profile
@@ -62,6 +69,26 @@ nebariapp:
       icon: ""
       category: "Mystic"
       priority: 10
+
+# =============================================================================
+# Keycloak / OIDC runtime config (consumed by the custody-agent service)
+# =============================================================================
+# The agent serves /config.json to the React SPA from CUSTODY_OIDC_* env vars
+# (agent_service/app.py) and validates API bearer tokens against the realm
+# JWKS (agent_service/auth.py). The deployment template derives those env vars
+# from this block when nebariapp auth is enabled.
+keycloak:
+  # External URL — used by the browser (keycloak-js) and as the expected
+  # token issuer (`iss` claim).
+  url: https://keycloak.mystic.openteams.ai
+  realm: nebari
+  # In-cluster URL for JWKS fetches, so token validation does not hairpin
+  # through the external NLB (mirrors the operator's SecurityPolicy, which
+  # uses the internal endpoint for the token URL).
+  internalUrl: http://keycloak-keycloakx-http.keycloak.svc.cluster.local:8080
+  # SPA client id override; empty = the operator's default naming for
+  # auth.spaClient, <namespace>-custody-agent-spa.
+  spaClientId: ""
 
 # =============================================================================
 # Secrets (referenced by name — never inline values)
