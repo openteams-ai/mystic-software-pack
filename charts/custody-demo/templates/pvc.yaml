@@ -1,0 +1,25 @@
+{{/*
+  Run-artifacts PVC for custody-agent (issue #19 durability).
+  Provisioned only when artifacts.persistentVolumeClaim.create is true; otherwise
+  the deployment binds an externally pre-created PVC (claimName) or an emptyDir.
+  ReadWriteOnce — paired with the Recreate strategy in deployments.yaml.
+*/}}
+{{- if and .Values.artifacts .Values.artifacts.persistentVolumeClaim .Values.artifacts.persistentVolumeClaim.create }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ required "artifacts.persistentVolumeClaim.claimName is required when create=true" .Values.artifacts.persistentVolumeClaim.claimName }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/part-of: custody-demo
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  {{- with .Values.artifacts.persistentVolumeClaim.storageClass }}
+  storageClassName: {{ . }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.artifacts.persistentVolumeClaim.size | default "5Gi" }}
+{{- end }}
