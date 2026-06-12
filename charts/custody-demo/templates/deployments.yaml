@@ -41,6 +41,15 @@ spec:
         app.kubernetes.io/part-of: custody-demo
     spec:
       serviceAccountName: {{ $.Values.serviceAccount.name }}
+      {{- if eq $name "custody-agent" }}
+      securityContext:
+        # The agent runs as non-root uid 10001 (USER custody). fsGroup makes the
+        # mounted /data/artifacts volume group-owned and group-writable, so the
+        # SQLite store (custody.db) and run artifacts can be written. A longhorn
+        # RWO PVC otherwise mounts root-owned and the agent crashes on startup
+        # opening the db (the image-build chown is shadowed by the mount).
+        fsGroup: 10001
+      {{- end }}
       {{- if $svc.gpu }}
       nodeSelector:
         {{- toYaml $.Values.gpu.nodeSelector | nindent 8 }}
