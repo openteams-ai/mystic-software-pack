@@ -4,14 +4,15 @@
 # =============================================================================
 # Nebari Integration
 # =============================================================================
-# Creates a NebariApp CRD for checkmaite-serve routing + Keycloak SSO.
-# Set enabled: true when deploying on a Nebari cluster.
+# Creates a NebariApp CRD for the workflow-builder UI routing + Keycloak SSO.
+# All hostname traffic routes to the ui Service (nginx), which serves the SPA
+# and proxies /api/ to the api Service. Set enabled: true on a Nebari cluster.
 nebariapp:
   enabled: false
   # hostname: checkmaite.mystic.openteams.ai  # Required when enabled
   service:
     name: checkmaite
-    port: 5006
+    port: 3000
   auth:
     enabled: true
     provider: keycloak
@@ -33,13 +34,29 @@ nebariapp:
     priority: 20
 
 # =============================================================================
-# Application image
+# Application images
 # =============================================================================
-image:
-  # repository: ghcr.io/openteams-ai/mystic/checkmaite  # Required — must be injected per-deployment
-  repository: ""
-  tag: "0.1.0"
-  pullPolicy: IfNotPresent
+# Repositories are required — must be injected per-deployment.
+images:
+  # Workflow-builder API (FastAPI, :8000)
+  api:
+    # repository: ghcr.io/openteams-ai/mystic/checkmaite-custody-api
+    repository: ""
+    tag: latest
+    pullPolicy: IfNotPresent
+  # SPA bundle served by nginx (:3000); proxies /api/ to the api Service
+  ui:
+    # repository: ghcr.io/openteams-ai/mystic/checkmaite-custody-ui
+    repository: ""
+    tag: latest
+    pullPolicy: IfNotPresent
+  # Full checkmaite+plugin image — only the nightly eval CronJob still uses it
+  # (the api image deliberately omits the vendored checkmaite the CLI needs)
+  checkmaite:
+    # repository: ghcr.io/openteams-ai/mystic/checkmaite
+    repository: ""
+    tag: latest
+    pullPolicy: IfNotPresent
 
 # =============================================================================
 # Service Account (IRSA for S3 access to custody-demo-data)
@@ -107,13 +124,25 @@ nightlyEval:
 # =============================================================================
 # Resources
 # =============================================================================
+# The api runs workflow executions in-process (polars metrics, judge calls,
+# frame crops) — its memory limit keeps the old single-pod 8Gi ceiling so an
+# eval can never be OOM-killed for having less headroom than before. The ui
+# is nginx serving a static bundle; it idles around 10Mi.
 resources:
-  requests:
-    cpu: "1"
-    memory: 2Gi
-  limits:
-    cpu: "4"
-    memory: 8Gi
+  api:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: "2"
+      memory: 8Gi
+  ui:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
 
 # =============================================================================
 # Overrides

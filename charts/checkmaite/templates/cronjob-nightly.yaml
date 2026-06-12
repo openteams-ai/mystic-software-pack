@@ -66,7 +66,7 @@ spec:
                   mountPath: /data/gt
           containers:
             - name: smoke-eval
-              image: "{{ required "image.repository is required" .Values.image.repository }}:{{ .Values.image.tag }}"
+              image: "{{ required "images.checkmaite.repository is required when nightlyEval.enabled" .Values.images.checkmaite.repository }}:{{ .Values.images.checkmaite.tag }}"
               # CLI contract §10 — exact flags required by checkmaite_plugin_custody.cli
               command:
                 - python

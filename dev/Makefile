@@ -54,10 +54,13 @@ template-custody-demo:
 template-checkmaite:
 	@echo "--- checkmaite (nebariapp.enabled=false) ---"
 	helm template t $(CHARTS_DIR)/checkmaite/ \
-		--set image.repository=registry.example.com/checkmaite > /dev/null
+		--set images.api.repository=registry.example.com/checkmaite-custody-api \
+		--set images.ui.repository=registry.example.com/checkmaite-custody-ui > /dev/null
 	@echo "--- checkmaite (nebariapp.enabled=true + nightly) ---"
 	helm template t $(CHARTS_DIR)/checkmaite/ \
-		--set image.repository=registry.example.com/checkmaite \
+		--set images.api.repository=registry.example.com/checkmaite-custody-api \
+		--set images.ui.repository=registry.example.com/checkmaite-custody-ui \
+		--set images.checkmaite.repository=registry.example.com/checkmaite \
 		--set nebariapp.enabled=true \
 		--set nebariapp.hostname=checkmaite.custody.local \
 		--set nightlyEval.enabled=true > /dev/null
