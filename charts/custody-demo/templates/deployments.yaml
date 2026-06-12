@@ -70,6 +70,30 @@ spec:
         # root-owned /data and every video fetch 503s with EACCES.
         - name: video-cache
           emptyDir: {}
+        {{- if (($.Values.litestream).enabled) }}
+        - name: litestream-config
+          configMap:
+            name: custody-litestream
+        {{- end }}
+      {{- if (($.Values.litestream).enabled) }}
+      initContainers:
+        # Restore custody.db from S3 before the agent starts. No-op on first run
+        # (-if-replica-exists). Makes S3 the durable source of truth so the db
+        # survives pod rolls AND PVC/cluster loss — emptyDir is fine below.
+        - name: litestream-restore
+          image: {{ $.Values.litestream.image }}
+          args:
+            - restore
+            - -if-replica-exists
+            - -config
+            - /etc/litestream/litestream.yml
+            - {{ $.Values.litestream.dbPath | quote }}
+          volumeMounts:
+            - name: run-artifacts
+              mountPath: /data/artifacts
+            - name: litestream-config
+              mountPath: /etc/litestream
+      {{- end }}
       {{- end }}
       {{- if eq $name "custody-tools" }}
       volumes:
@@ -151,4 +175,19 @@ spec:
           resources:
             {{- toYaml $svc.resources | nindent 12 }}
           {{- end }}
+        {{- if and (eq $name "custody-agent") (($.Values.litestream).enabled) }}
+        # Sidecar: continuously replicate custody.db's WAL to S3 (sub-second).
+        # Uses the pod's IRSA creds (EKS injects them into every container).
+        - name: litestream
+          image: {{ $.Values.litestream.image }}
+          args:
+            - replicate
+            - -config
+            - /etc/litestream/litestream.yml
+          volumeMounts:
+            - name: run-artifacts
+              mountPath: /data/artifacts
+            - name: litestream-config
+              mountPath: /etc/litestream
+        {{- end }}
 {{- end }}
