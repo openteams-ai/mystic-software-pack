@@ -21,6 +21,21 @@ nebariapp:
       - openid
       - profile
       - email
+  # REQUIRED for any traffic to reach the app: the nebari-operator only
+  # creates the HTTPRoute when spec.routing is present — without it the
+  # NebariApp reports RoutingNotConfigured and the hostname 404s (same
+  # lesson as custody-demo). Omitting routing.routes still means all
+  # hostname traffic goes to the service above.
+  routing:
+    publicRoutes:
+      # API health endpoint stays open for external monitors
+      - pathPrefix: /api/v1/health
+        pathType: Exact
+      # The landing-page tile icon must be fetchable WITHOUT auth (the
+      # cluster landing page renders it pre-login). The ui image ships it
+      # in its public assets.
+      - pathPrefix: /mystic_depot_icon.svg
+        pathType: Exact
   gateway: public
   # Cluster landing-page tile. icon must be anonymously fetchable — point it
   # at the custody-agent-served SVG, e.g.

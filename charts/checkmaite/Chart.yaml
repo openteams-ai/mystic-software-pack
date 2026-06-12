@@ -5,5 +5,5 @@ description: >
   (checkmaite-custody-ui + checkmaite-custody-api), RWX analytics PVC, and
   nightly evaluation CronJob. Namespace: nebari-checkmaite-pack.
 type: application
-version: 0.2.0
+version: 0.2.1
 appVersion: "0.2.0"
