@@ -66,6 +66,21 @@ spec:
                 secretKeyRef:
                   name: {{ .Values.judge.secretName }}
                   key: OPENROUTER_API_KEY
+            # Ask-Langfuse chat agent: reuses the OpenRouter key for its model
+            # and the LANGFUSE_* vars above to reach Langfuse's MCP server.
+            - name: CUSTODY_CHAT_ENABLED
+              value: {{ .Values.chat.enabled | quote }}
+            - name: CUSTODY_CHAT_MODEL
+              value: {{ .Values.chat.model | quote }}
+            {{- if .Values.chat.baseUrl }}
+            - name: CUSTODY_CHAT_BASE_URL
+              value: {{ .Values.chat.baseUrl | quote }}
+            {{- end }}
+            - name: OPENROUTER_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.judge.secretName }}
+                  key: OPENROUTER_API_KEY
             - name: SUT_BASE_URL
               value: {{ .Values.endpoints.sutBaseUrl }}
             - name: TOOLS_BASE_URL
