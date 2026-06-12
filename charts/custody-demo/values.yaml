@@ -130,8 +130,15 @@ common:
 # The chart mounts this volume into custody-agent only (other services do not
 # write artifacts).
 artifacts:
-  # persistentVolumeClaim:
-  #   claimName: ""   # set to a pre-existing PVC to persist artifacts across pod restarts
+  persistentVolumeClaim:
+    # When create=true the chart provisions the PVC defined below. Otherwise set
+    # claimName to a pre-existing PVC. Leave claimName empty for an ephemeral
+    # emptyDir (default). A PVC is REQUIRED for run/project durability (issue #19:
+    # the SQLite store lives at /data/artifacts/custody.db inside this volume).
+    create: false
+    claimName: ""
+    storageClass: ""   # "" = cluster default (longhorn). Must be ReadWriteOnce-capable.
+    size: 5Gi
 
 # =============================================================================
 # GPU scheduling (for custody-tools when gpu=true)
@@ -180,8 +187,14 @@ services:
         # which is root-owned image fs in the non-root container - project
         # creates 500 on the persist write (and silently survive only
         # in-memory). Keep the store inside the writable artifacts volume so
-        # it also persists when artifacts move to a PVC.
+        # it also persists when artifacts move to a PVC. Retained as the legacy
+        # JSON path imported once into SQLite on first boot.
         value: /data/artifacts/custody-projects.json
+      - name: CUSTODY_DB
+        # SQLite run + project store (issue #19). Lives inside the artifacts
+        # volume so runs/ledgers persist on the PVC across pod rolls / ArgoCD
+        # syncs. /data itself is root-owned image fs, hence /data/artifacts.
+        value: /data/artifacts/custody.db
     resources:
       requests:
         cpu: 250m
