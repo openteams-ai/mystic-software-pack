@@ -141,6 +141,23 @@ artifacts:
     size: 5Gi
 
 # =============================================================================
+# Litestream — stream the run-store SQLite db to S3 (durable source of truth)
+# =============================================================================
+# When enabled, a restore init-container pulls custody.db from S3 on startup and
+# a sidecar continuously replicates its WAL back. With S3 as the durable store,
+# /data/artifacts can be a plain emptyDir (set artifacts.persistentVolumeClaim
+# off) — no PVC, no Recreate/Multi-Attach. Litestream uses the pod's IRSA creds;
+# the role needs write on s3://<bucket>/<path-prefix> (run-store/*).
+litestream:
+  enabled: false
+  image: litestream/litestream:0.3.13
+  dbPath: /data/artifacts/custody.db
+  s3:
+    bucket: custody-demo-data
+    path: run-store/custody.db
+    region: us-west-2
+
+# =============================================================================
 # GPU scheduling (for custody-tools when gpu=true)
 # =============================================================================
 gpu:
@@ -192,9 +209,14 @@ services:
         value: /data/artifacts/custody-projects.json
       - name: CUSTODY_DB
         # SQLite run + project store (issue #19). Lives inside the artifacts
-        # volume so runs/ledgers persist on the PVC across pod rolls / ArgoCD
-        # syncs. /data itself is root-owned image fs, hence /data/artifacts.
+        # volume (/data/artifacts); persisted to S3 via the litestream sidecar.
         value: /data/artifacts/custody.db
+      - name: CUSTODY_AUTH_DISABLED
+        # The Envoy gateway SecurityPolicy already enforces OIDC for external
+        # traffic to agent.mystic.openteams.ai. Disable the redundant app-level
+        # auth so internal callers (checkmaite-api, eval CLI) can reach the
+        # agent without a token. External access stays gateway-protected.
+        value: "1"
     resources:
       requests:
         cpu: 250m

@@ -1,0 +1,24 @@
+{{/*
+  Litestream config for the custody-agent run-store DB.
+  Replicates /data/artifacts/custody.db to S3 (the durable source of truth) and
+  restores it on pod startup. Only rendered when litestream.enabled.
+*/}}
+{{- if (((.Values.litestream).enabled)) }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: custody-litestream
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/part-of: custody-demo
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+data:
+  litestream.yml: |
+    dbs:
+      - path: {{ .Values.litestream.dbPath }}
+        replicas:
+          - type: s3
+            bucket: {{ .Values.litestream.s3.bucket }}
+            path: {{ .Values.litestream.s3.path }}
+            region: {{ .Values.litestream.s3.region }}
+{{- end }}
