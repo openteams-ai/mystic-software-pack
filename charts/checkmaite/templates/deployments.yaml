@@ -1,0 +1,132 @@
+{{/*
+  Two deployments replace the old single checkmaite-serve one:
+
+    api — checkmaite-custody-api (FastAPI workflow-builder API, :8000).
+          Carries the Langfuse/judge credentials because executed workflow
+          blocks (trace_rules, judge_rubric) read them from the environment;
+          base URLs come from each block's node config. Workflows persist as
+          JSON under CUSTODY_DATA_DIR, pointed at the RWX analytics PVC so
+          they survive restarts and write_scores output lands on the same
+          volume the nightly CronJob writes to.
+
+    ui  — checkmaite-custody-ui (nginx :3000 serving the SPA bundle).
+          nginx proxies /api/ to http://api:8000 (baked into the image), so
+          the api Service below must keep that exact name.
+*/}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "checkmaite.fullname" . }}-api
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "checkmaite.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "checkmaite.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: api
+  template:
+    metadata:
+      labels:
+        {{- include "checkmaite.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: api
+    spec:
+      serviceAccountName: {{ .Values.serviceAccount.name }}
+      containers:
+        - name: api
+          image: "{{ required "images.api.repository is required" .Values.images.api.repository }}:{{ .Values.images.api.tag }}"
+          imagePullPolicy: {{ .Values.images.api.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+          env:
+            - name: CUSTODY_DATA_DIR
+              value: {{ .Values.analytics.mountPath }}
+            - name: LANGFUSE_HOST
+              value: {{ .Values.langfuse.host }}
+            - name: LANGFUSE_PUBLIC_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.langfuse.secretName }}
+                  key: LANGFUSE_PUBLIC_KEY
+            - name: LANGFUSE_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.langfuse.secretName }}
+                  key: LANGFUSE_SECRET_KEY
+            - name: JUDGE_BASE_URL
+              value: {{ .Values.endpoints.judgeBaseUrl }}
+            - name: JUDGE_MODEL
+              value: {{ .Values.judge.model }}
+            - name: JUDGE_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.judge.secretName }}
+                  key: OPENROUTER_API_KEY
+            - name: SUT_BASE_URL
+              value: {{ .Values.endpoints.sutBaseUrl }}
+            - name: TOOLS_BASE_URL
+              value: {{ .Values.endpoints.toolsBaseUrl }}
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: {{ .Values.endpoints.otelExporterOtlpEndpoint }}
+            - name: CUSTODY_DATA_BUCKET
+              value: {{ .Values.s3.bucket }}
+          readinessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          {{- with .Values.resources.api }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: analytics
+              mountPath: {{ .Values.analytics.mountPath }}
+      volumes:
+        - name: analytics
+          persistentVolumeClaim:
+            claimName: checkmaite-analytics
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "checkmaite.fullname" . }}-ui
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "checkmaite.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ui
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "checkmaite.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: ui
+  template:
+    metadata:
+      labels:
+        {{- include "checkmaite.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: ui
+    spec:
+      containers:
+        - name: ui
+          image: "{{ required "images.ui.repository is required" .Values.images.ui.repository }}:{{ .Values.images.ui.tag }}"
+          imagePullPolicy: {{ .Values.images.ui.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 3000
+              protocol: TCP
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          {{- with .Values.resources.ui }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}

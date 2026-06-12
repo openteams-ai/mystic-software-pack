@@ -1,0 +1,45 @@
+{{/*
+  ui Service keeps the chart fullname — the NebariApp routes all hostname
+  traffic here (nginx serves the SPA and proxies /api/ onward).
+
+  api Service MUST be named exactly "api": the nginx config baked into the
+  checkmaite-custody-ui image proxies /api/ to http://api:8000, which
+  resolves via namespace-local DNS.
+*/}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "checkmaite.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "checkmaite.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ui
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: {{ .Values.nebariapp.service.port | default 3000 }}
+      targetPort: http
+      protocol: TCP
+  selector:
+    {{- include "checkmaite.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: ui
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: api
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "checkmaite.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 8000
+      targetPort: http
+      protocol: TCP
+  selector:
+    {{- include "checkmaite.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: api

@@ -41,12 +41,15 @@ jobs:
       - name: Template checkmaite (NebariApp disabled)
         run: |
           helm template t charts/checkmaite/ \
-            --set image.repository=registry.example.com/checkmaite
+            --set images.api.repository=registry.example.com/checkmaite-custody-api \
+            --set images.ui.repository=registry.example.com/checkmaite-custody-ui
 
       - name: Template checkmaite (NebariApp enabled + nightly CronJob)
         run: |
           helm template t charts/checkmaite/ \
-            --set image.repository=registry.example.com/checkmaite \
+            --set images.api.repository=registry.example.com/checkmaite-custody-api \
+            --set images.ui.repository=registry.example.com/checkmaite-custody-ui \
+            --set images.checkmaite.repository=registry.example.com/checkmaite \
             --set nebariapp.enabled=true \
             --set nebariapp.hostname=checkmaite.example.com \
             --set nightlyEval.enabled=true
