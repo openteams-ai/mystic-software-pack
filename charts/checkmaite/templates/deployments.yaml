@@ -45,6 +45,21 @@ spec:
           env:
             - name: CUSTODY_DATA_DIR
               value: {{ .Values.analytics.mountPath }}
+            {{- if and .Values.nebariapp.enabled ((.Values.nebariapp.auth).enabled) }}
+            {{- $kc := .Values.keycloak }}
+            {{- /* Served to the SPA via /config.json (api /api/v1/config.json) */}}
+            - name: CUSTODY_OIDC_FRONTEND_URL
+              value: {{ $kc.url | quote }}
+            - name: CUSTODY_OIDC_REALM
+              value: {{ $kc.realm | quote }}
+            - name: CUSTODY_OIDC_CLIENT_ID
+              value: {{ $kc.spaClientId | default (printf "%s-%s-spa" .Release.Namespace (include "checkmaite.fullname" .)) | quote }}
+            {{- /* Bearer-token validation against the realm JWKS */}}
+            - name: CUSTODY_OIDC_ISSUER
+              value: {{ printf "%s/realms/%s" $kc.url $kc.realm | quote }}
+            - name: CUSTODY_OIDC_JWKS_URL
+              value: {{ printf "%s/realms/%s/protocol/openid-connect/certs" $kc.internalUrl $kc.realm | quote }}
+            {{- end }}
             - name: LANGFUSE_HOST
               value: {{ .Values.langfuse.host }}
             - name: LANGFUSE_PUBLIC_KEY
