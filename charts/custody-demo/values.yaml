@@ -112,7 +112,7 @@ serviceAccount:
 # Common env wiring
 # =============================================================================
 common:
-  otelExporterOtlpEndpoint: http://otel-collector.opentelemetry.svc:4318
+  otelExporterOtlpEndpoint: http://opentelemetry-collector.monitoring.svc:4318
   dataBucket: custody-demo-data
 
 # =============================================================================

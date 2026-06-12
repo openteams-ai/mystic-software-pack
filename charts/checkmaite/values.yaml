@@ -145,7 +145,7 @@ endpoints:
   # Agent calls the fault proxy; plugin calls tools directly for evidence crops (§9)
   toolsBaseUrl: http://custody-fault-proxy.nebari-custody-demo-pack.svc:8085
   judgeBaseUrl: https://openrouter.ai/api/v1
-  otelExporterOtlpEndpoint: http://otel-collector.opentelemetry.svc:4318
+  otelExporterOtlpEndpoint: http://opentelemetry-collector.monitoring.svc:4318
 
 # =============================================================================
 # S3
