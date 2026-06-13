@@ -60,7 +60,6 @@ template-checkmaite:
 	helm template t $(CHARTS_DIR)/checkmaite/ \
 		--set images.api.repository=registry.example.com/checkmaite-custody-api \
 		--set images.ui.repository=registry.example.com/checkmaite-custody-ui \
-		--set images.checkmaite.repository=registry.example.com/checkmaite \
 		--set nebariapp.enabled=true \
 		--set nebariapp.hostname=checkmaite.custody.local \
 		--set nightlyEval.enabled=true > /dev/null

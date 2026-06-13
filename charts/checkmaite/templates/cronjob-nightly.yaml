@@ -1,14 +1,13 @@
 {{/*
   Nightly scenario-A smoke eval CronJob.
-  Disabled by default (nightlyEval.enabled=false).
-  Enable in ArgoCD values once Team 3's checkmaite-plugin-custody is baked
-  into the image (set nightlyEval.enabled=true + bump image tag).
+  Disabled by default (nightlyEval.enabled=false). Enable in ArgoCD values
+  (set nightlyEval.enabled=true). Uses the api image, which bundles the eval
+  CLI and the baked scenarios/rubrics.
 
-  Init containers:
-    fetch-benchmarks: shallow-clone custody-benchmarks repo → /benchmarks
-    fetch-gt:         sync *.gt.txt from S3 (IRSA ServiceAccount grants access)
+  Init container:
+    fetch-gt: sync *.gt.txt from S3 (IRSA ServiceAccount grants access)
 
-  Main container invokes the Team 3 CLI (contract §10) with exact flags.
+  Main container invokes the eval CLI (contract §10) with exact flags.
 */}}
 {{- if .Values.nightlyEval.enabled }}
 apiVersion: batch/v1
@@ -35,28 +34,19 @@ spec:
         spec:
           restartPolicy: Never
           serviceAccountName: {{ .Values.serviceAccount.name }}
+          # Scenarios + rubrics are baked into the api image (used here), so no
+          # fetch-benchmarks clone is needed — only GT must be synced from S3.
           initContainers:
-            - name: fetch-benchmarks
-              image: alpine/git:2.45.2
-              args:
-                - clone
-                - --depth=1
-                - {{ .Values.nightlyEval.benchmarksRepo }}
-                - /benchmarks
-              volumeMounts:
-                - name: benchmarks
-                  mountPath: /benchmarks
-            # GT files are required for the 8 deterministic GT metrics
-            # (idf1, custody_*, id_switches, reacquired, ece ...).
-            # Syncs only *.gt.txt objects from staged S3 data;
-            # IRSA ServiceAccount grants read access.
+            # GT files are required for the deterministic GT metrics (idf1,
+            # custody_*, id_switches, reacquired, ece ...). Syncs only *.gt.txt
+            # objects from the staged SeaDronesSee data; IRSA grants read access.
             - name: fetch-gt
               image: amazon/aws-cli:2.17.0
               args:
                 - s3
                 - sync
-                - s3://{{ .Values.s3.bucket }}/visdrone-mot
-                - /data/gt/visdrone-mot
+                - s3://{{ .Values.s3.bucket }}/seadronessee
+                - /data/gt/seadronessee
                 - --exclude
                 - "*"
                 - --include
@@ -66,7 +56,9 @@ spec:
                   mountPath: /data/gt
           containers:
             - name: smoke-eval
-              image: "{{ required "images.checkmaite.repository is required when nightlyEval.enabled" .Values.images.checkmaite.repository }}:{{ .Values.images.checkmaite.tag }}"
+              # The api image now bundles the eval CLI + baked benchmarks
+              # (the standalone checkmaite image was retired).
+              image: "{{ required "images.api.repository is required when nightlyEval.enabled" .Values.images.api.repository }}:{{ .Values.images.api.tag }}"
               # CLI contract §10 — exact flags required by checkmaite_plugin_custody.cli
               command:
                 - python
@@ -88,7 +80,7 @@ spec:
                 - --rubrics-dir
                 - /benchmarks/rubrics
                 - --gt-root
-                - /data/gt/visdrone-mot
+                - /data/gt/seadronessee
                 - --out
                 - {{ .Values.analytics.mountPath }}
               env:
@@ -123,12 +115,10 @@ spec:
                       name: {{ .Values.judge.secretName }}
                       key: OPENROUTER_API_KEY
                 - name: CUSTODY_GT_ROOT
-                  value: /data/gt/visdrone-mot
+                  value: /data/gt/seadronessee
               volumeMounts:
                 - name: analytics
                   mountPath: {{ .Values.analytics.mountPath }}
-                - name: benchmarks
-                  mountPath: /benchmarks
                 - name: gt-data
                   mountPath: /data/gt
                   readOnly: true
@@ -136,8 +126,6 @@ spec:
             - name: analytics
               persistentVolumeClaim:
                 claimName: checkmaite-analytics
-            - name: benchmarks
-              emptyDir: {}
             - name: gt-data
               emptyDir: {}
 {{- end }}
