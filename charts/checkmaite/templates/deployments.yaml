@@ -34,20 +34,9 @@ spec:
         app.kubernetes.io/component: api
     spec:
       serviceAccountName: {{ .Values.serviceAccount.name }}
-      # Scenario YAMLs are not baked into the api image; clone custody-benchmarks
-      # into a shared emptyDir so GET /api/v1/scenarios and POST /api/v1/runs can
-      # resolve them (mirrors the nightly CronJob's fetch-benchmarks init step).
-      initContainers:
-        - name: fetch-benchmarks
-          image: alpine/git:2.45.2
-          args:
-            - clone
-            - --depth=1
-            - {{ .Values.nightlyEval.benchmarksRepo }}
-            - /benchmarks
-          volumeMounts:
-            - name: benchmarks
-              mountPath: /benchmarks
+      # Scenarios + rubrics are baked into the api image at /benchmarks
+      # (CUSTODY_SCENARIOS_DIR / CUSTODY_RUBRICS_DIR image defaults), so no
+      # fetch-benchmarks init container is needed. Storage strategy: plugin #19.
       containers:
         - name: api
           image: "{{ required "images.api.repository is required" .Values.images.api.repository }}:{{ .Values.images.api.tag }}"
@@ -115,7 +104,8 @@ spec:
             - name: TOOLS_BASE_URL
               value: {{ .Values.endpoints.toolsBaseUrl }}
             # Scenario catalog dir for GET /api/v1/scenarios + POST /api/v1/runs
-            # (populated by the fetch-benchmarks init container).
+            # — baked into the api image (this just pins the path explicitly;
+            # the image already defaults CUSTODY_SCENARIOS_DIR to it).
             - name: CUSTODY_SCENARIOS_DIR
               value: /benchmarks/scenarios
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
@@ -135,14 +125,10 @@ spec:
           volumeMounts:
             - name: analytics
               mountPath: {{ .Values.analytics.mountPath }}
-            - name: benchmarks
-              mountPath: /benchmarks
       volumes:
         - name: analytics
           persistentVolumeClaim:
             claimName: checkmaite-analytics
-        - name: benchmarks
-          emptyDir: {}
 ---
 apiVersion: apps/v1
 kind: Deployment

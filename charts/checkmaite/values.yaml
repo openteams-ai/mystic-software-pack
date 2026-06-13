@@ -72,13 +72,9 @@ images:
     repository: ""
     tag: latest
     pullPolicy: IfNotPresent
-  # Full checkmaite+plugin image — only the nightly eval CronJob still uses it
-  # (the api image deliberately omits the vendored checkmaite the CLI needs)
-  checkmaite:
-    # repository: ghcr.io/openteams-ai/mystic/checkmaite
-    repository: ""
-    tag: latest
-    pullPolicy: IfNotPresent
+  # NOTE: the standalone `checkmaite` image was retired — the api image now
+  # bundles the checkmaite framework + eval CLI + baked benchmarks, and the
+  # nightly CronJob runs from images.api.
 
 # =============================================================================
 # Service Account (IRSA for S3 access to custody-demo-data)
@@ -178,8 +174,10 @@ nightlyEval:
   schedule: "0 6 * * *"
   # Scenario(s) to run nightly — single value; use CLI --scenario for multi
   scenario: A-baseline
-  modelId: claude-sonnet-4-6
-  benchmarksRepo: https://github.com/openteams/custody-benchmarks.git
+  # OpenRouter-routed model id (the deployment is OpenRouter-only).
+  modelId: openrouter/anthropic/claude-sonnet-4.6
+  # NOTE: no benchmarksRepo — scenarios/rubrics are baked into the api image
+  # (used by the CronJob); GT still syncs from S3 in the fetch-gt init container.
 
 # =============================================================================
 # Resources
