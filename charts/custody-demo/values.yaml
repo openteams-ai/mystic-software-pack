@@ -238,13 +238,18 @@ services:
     env:
       - name: CUSTODY_DATA_BUCKET
         value: custody-demo-data
+    # CPU YOLO/ByteTrack over 4K SeaDronesSee frames is memory-heavy: at an 8Gi
+    # limit the pod was OOMKilled (exit 137) under a few concurrent eval runs,
+    # which surfaced to the agent as 502/504 tool failures and timed runs out.
+    # 16Gi gives burst headroom on the 31Gi nodes; the 2Gi request keeps it off
+    # the small (7.9Gi) nodes so the limit is actually usable.
     resources:
       requests:
-        cpu: 250m
-        memory: 512Mi
+        cpu: 500m
+        memory: 2Gi
       limits:
         cpu: "3"
-        memory: 8Gi
+        memory: 16Gi
 
   custody-fault-proxy:
     port: 8085
