@@ -21,6 +21,13 @@ metadata:
     app.kubernetes.io/managed-by: {{ $.Release.Service }}
     helm.sh/chart: {{ include "custody-demo.chart" $ }}
 spec:
+  {{- if and (eq $name "custody-agent") $.Values.artifacts $.Values.artifacts.persistentVolumeClaim $.Values.artifacts.persistentVolumeClaim.claimName }}
+  # A ReadWriteOnce PVC can attach to only one node at a time; the old pod must
+  # release it before the new pod mounts it. RollingUpdate would deadlock the
+  # ArgoCD sync on Multi-Attach. Recreate terminates the old pod first.
+  strategy:
+    type: Recreate
+  {{- end }}
   replicas: 1
   selector:
     matchLabels:
@@ -34,6 +41,15 @@ spec:
         app.kubernetes.io/part-of: custody-demo
     spec:
       serviceAccountName: {{ $.Values.serviceAccount.name }}
+      {{- if eq $name "custody-agent" }}
+      securityContext:
+        # The agent runs as non-root uid 10001 (USER custody). fsGroup makes the
+        # mounted /data/artifacts volume group-owned and group-writable, so the
+        # SQLite store (custody.db) and run artifacts can be written. A longhorn
+        # RWO PVC otherwise mounts root-owned and the agent crashes on startup
+        # opening the db (the image-build chown is shadowed by the mount).
+        fsGroup: 10001
+      {{- end }}
       {{- if $svc.gpu }}
       nodeSelector:
         {{- toYaml $.Values.gpu.nodeSelector | nindent 8 }}
@@ -54,6 +70,30 @@ spec:
         # root-owned /data and every video fetch 503s with EACCES.
         - name: video-cache
           emptyDir: {}
+        {{- if (($.Values.litestream).enabled) }}
+        - name: litestream-config
+          configMap:
+            name: custody-litestream
+        {{- end }}
+      {{- if (($.Values.litestream).enabled) }}
+      initContainers:
+        # Restore custody.db from S3 before the agent starts. No-op on first run
+        # (-if-replica-exists). Makes S3 the durable source of truth so the db
+        # survives pod rolls AND PVC/cluster loss — emptyDir is fine below.
+        - name: litestream-restore
+          image: {{ $.Values.litestream.image }}
+          args:
+            - restore
+            - -if-replica-exists
+            - -config
+            - /etc/litestream/litestream.yml
+            - {{ $.Values.litestream.dbPath | quote }}
+          volumeMounts:
+            - name: run-artifacts
+              mountPath: /data/artifacts
+            - name: litestream-config
+              mountPath: /etc/litestream
+      {{- end }}
       {{- end }}
       {{- if eq $name "custody-tools" }}
       volumes:
@@ -135,4 +175,19 @@ spec:
           resources:
             {{- toYaml $svc.resources | nindent 12 }}
           {{- end }}
+        {{- if and (eq $name "custody-agent") (($.Values.litestream).enabled) }}
+        # Sidecar: continuously replicate custody.db's WAL to S3 (sub-second).
+        # Uses the pod's IRSA creds (EKS injects them into every container).
+        - name: litestream
+          image: {{ $.Values.litestream.image }}
+          args:
+            - replicate
+            - -config
+            - /etc/litestream/litestream.yml
+          volumeMounts:
+            - name: run-artifacts
+              mountPath: /data/artifacts
+            - name: litestream-config
+              mountPath: /etc/litestream
+        {{- end }}
 {{- end }}

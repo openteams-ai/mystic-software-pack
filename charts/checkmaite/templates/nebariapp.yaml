@@ -35,6 +35,10 @@ spec:
     {{- with .redirectURI }}
     redirectURI: {{ . }}
     {{- end }}
+    {{- with .spaClient }}
+    spaClient:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
     {{- with .scopes }}
     scopes:
       {{- toYaml . | nindent 6 }}

@@ -34,6 +34,20 @@ spec:
         app.kubernetes.io/component: api
     spec:
       serviceAccountName: {{ .Values.serviceAccount.name }}
+      # Scenario YAMLs are not baked into the api image; clone custody-benchmarks
+      # into a shared emptyDir so GET /api/v1/scenarios and POST /api/v1/runs can
+      # resolve them (mirrors the nightly CronJob's fetch-benchmarks init step).
+      initContainers:
+        - name: fetch-benchmarks
+          image: alpine/git:2.45.2
+          args:
+            - clone
+            - --depth=1
+            - {{ .Values.nightlyEval.benchmarksRepo }}
+            - /benchmarks
+          volumeMounts:
+            - name: benchmarks
+              mountPath: /benchmarks
       containers:
         - name: api
           image: "{{ required "images.api.repository is required" .Values.images.api.repository }}:{{ .Values.images.api.tag }}"
@@ -45,6 +59,21 @@ spec:
           env:
             - name: CUSTODY_DATA_DIR
               value: {{ .Values.analytics.mountPath }}
+            {{- if and .Values.nebariapp.enabled ((.Values.nebariapp.auth).enabled) }}
+            {{- $kc := .Values.keycloak }}
+            {{- /* Served to the SPA via /config.json (api /api/v1/config.json) */}}
+            - name: CUSTODY_OIDC_FRONTEND_URL
+              value: {{ $kc.url | quote }}
+            - name: CUSTODY_OIDC_REALM
+              value: {{ $kc.realm | quote }}
+            - name: CUSTODY_OIDC_CLIENT_ID
+              value: {{ $kc.spaClientId | default (printf "%s-%s-spa" .Release.Namespace (include "checkmaite.fullname" .)) | quote }}
+            {{- /* Bearer-token validation against the realm JWKS */}}
+            - name: CUSTODY_OIDC_ISSUER
+              value: {{ printf "%s/realms/%s" $kc.url $kc.realm | quote }}
+            - name: CUSTODY_OIDC_JWKS_URL
+              value: {{ printf "%s/realms/%s/protocol/openid-connect/certs" $kc.internalUrl $kc.realm | quote }}
+            {{- end }}
             - name: LANGFUSE_HOST
               value: {{ .Values.langfuse.host }}
             - name: LANGFUSE_PUBLIC_KEY
@@ -66,25 +95,29 @@ spec:
                 secretKeyRef:
                   name: {{ .Values.judge.secretName }}
                   key: OPENROUTER_API_KEY
-            # Ask-Langfuse chat agent: reuses the OpenRouter key for its model
-            # and the LANGFUSE_* vars above to reach Langfuse's MCP server.
+            # Ask-Langfuse chat agent: model via OpenRouter (key reused from
+            # judge-keys as CUSTODY_CHAT_API_KEY); base URL overridable via
+            # chat.baseUrl, defaulting to the judge's OpenRouter endpoint. The
+            # LANGFUSE_* vars above let it reach Langfuse's MCP server.
             - name: CUSTODY_CHAT_ENABLED
               value: {{ .Values.chat.enabled | quote }}
             - name: CUSTODY_CHAT_MODEL
               value: {{ .Values.chat.model | quote }}
-            {{- if .Values.chat.baseUrl }}
-            - name: CUSTODY_CHAT_BASE_URL
-              value: {{ .Values.chat.baseUrl | quote }}
-            {{- end }}
-            - name: OPENROUTER_API_KEY
+            - name: CUSTODY_CHAT_API_KEY
               valueFrom:
                 secretKeyRef:
                   name: {{ .Values.judge.secretName }}
                   key: OPENROUTER_API_KEY
+            - name: CUSTODY_CHAT_BASE_URL
+              value: {{ .Values.chat.baseUrl | default .Values.endpoints.judgeBaseUrl | quote }}
             - name: SUT_BASE_URL
               value: {{ .Values.endpoints.sutBaseUrl }}
             - name: TOOLS_BASE_URL
               value: {{ .Values.endpoints.toolsBaseUrl }}
+            # Scenario catalog dir for GET /api/v1/scenarios + POST /api/v1/runs
+            # (populated by the fetch-benchmarks init container).
+            - name: CUSTODY_SCENARIOS_DIR
+              value: /benchmarks/scenarios
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
               value: {{ .Values.endpoints.otelExporterOtlpEndpoint }}
             - name: CUSTODY_DATA_BUCKET
@@ -102,10 +135,14 @@ spec:
           volumeMounts:
             - name: analytics
               mountPath: {{ .Values.analytics.mountPath }}
+            - name: benchmarks
+              mountPath: /benchmarks
       volumes:
         - name: analytics
           persistentVolumeClaim:
             claimName: checkmaite-analytics
+        - name: benchmarks
+          emptyDir: {}
 ---
 apiVersion: apps/v1
 kind: Deployment

@@ -112,7 +112,7 @@ serviceAccount:
 # Common env wiring
 # =============================================================================
 common:
-  otelExporterOtlpEndpoint: http://otel-collector.opentelemetry.svc:4318
+  otelExporterOtlpEndpoint: http://opentelemetry-collector.monitoring.svc:4318
   dataBucket: custody-demo-data
 
 # =============================================================================
@@ -130,8 +130,32 @@ common:
 # The chart mounts this volume into custody-agent only (other services do not
 # write artifacts).
 artifacts:
-  # persistentVolumeClaim:
-  #   claimName: ""   # set to a pre-existing PVC to persist artifacts across pod restarts
+  persistentVolumeClaim:
+    # When create=true the chart provisions the PVC defined below. Otherwise set
+    # claimName to a pre-existing PVC. Leave claimName empty for an ephemeral
+    # emptyDir (default). A PVC is REQUIRED for run/project durability (issue #19:
+    # the SQLite store lives at /data/artifacts/custody.db inside this volume).
+    create: false
+    claimName: ""
+    storageClass: ""   # "" = cluster default (longhorn). Must be ReadWriteOnce-capable.
+    size: 5Gi
+
+# =============================================================================
+# Litestream — stream the run-store SQLite db to S3 (durable source of truth)
+# =============================================================================
+# When enabled, a restore init-container pulls custody.db from S3 on startup and
+# a sidecar continuously replicates its WAL back. With S3 as the durable store,
+# /data/artifacts can be a plain emptyDir (set artifacts.persistentVolumeClaim
+# off) — no PVC, no Recreate/Multi-Attach. Litestream uses the pod's IRSA creds;
+# the role needs write on s3://<bucket>/<path-prefix> (run-store/*).
+litestream:
+  enabled: false
+  image: litestream/litestream:0.3.13
+  dbPath: /data/artifacts/custody.db
+  s3:
+    bucket: custody-demo-data
+    path: run-store/custody.db
+    region: us-west-2
 
 # =============================================================================
 # GPU scheduling (for custody-tools when gpu=true)
@@ -180,8 +204,19 @@ services:
         # which is root-owned image fs in the non-root container - project
         # creates 500 on the persist write (and silently survive only
         # in-memory). Keep the store inside the writable artifacts volume so
-        # it also persists when artifacts move to a PVC.
+        # it also persists when artifacts move to a PVC. Retained as the legacy
+        # JSON path imported once into SQLite on first boot.
         value: /data/artifacts/custody-projects.json
+      - name: CUSTODY_DB
+        # SQLite run + project store (issue #19). Lives inside the artifacts
+        # volume (/data/artifacts); persisted to S3 via the litestream sidecar.
+        value: /data/artifacts/custody.db
+      - name: CUSTODY_AUTH_DISABLED
+        # The Envoy gateway SecurityPolicy already enforces OIDC for external
+        # traffic to agent.mystic.openteams.ai. Disable the redundant app-level
+        # auth so internal callers (checkmaite-api, eval CLI) can reach the
+        # agent without a token. External access stays gateway-protected.
+        value: "1"
     resources:
       requests:
         cpu: 250m
