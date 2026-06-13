@@ -138,6 +138,23 @@ judge:
   model: google/gemini-3.5-flash
 
 # =============================================================================
+# Ask-Langfuse chat agent (read-only NL Q&A over Langfuse via its MCP server)
+# =============================================================================
+# The api serves a small tool-calling chat agent that connects to Langfuse's
+# built-in MCP server at {langfuse.host}/api/public/mcp (Basic Auth from the
+# langfuse.secretName keys) and answers questions over the evaluation data.
+# It reuses OPENROUTER_API_KEY from judge.secretName for its model and is
+# deliberately un-instrumented (never traces itself back into Langfuse).
+chat:
+  enabled: true
+  # OpenAI-compatible model slug for the chat agent (must be a strong
+  # tool-caller). Default goes through OpenRouter.
+  model: anthropic/claude-sonnet-4.6
+  # Optional override for the model endpoint (e.g. a self-hosted vLLM). When
+  # empty the agent uses OpenRouter.
+  baseUrl: ""
+
+# =============================================================================
 # Endpoint wiring (contract §9 / §7 / §10)
 # =============================================================================
 endpoints:

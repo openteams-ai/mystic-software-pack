@@ -95,16 +95,21 @@ spec:
                 secretKeyRef:
                   name: {{ .Values.judge.secretName }}
                   key: OPENROUTER_API_KEY
-            # Chat agent ("Ask Langfuse") reuses the hosted OpenRouter key + base
-            # URL (same provider as the judge). Without these the chat route 500s
-            # with "OPENROUTER_API_KEY (or CUSTODY_CHAT_API_KEY) is required".
+            # Ask-Langfuse chat agent: model via OpenRouter (key reused from
+            # judge-keys as CUSTODY_CHAT_API_KEY); base URL overridable via
+            # chat.baseUrl, defaulting to the judge's OpenRouter endpoint. The
+            # LANGFUSE_* vars above let it reach Langfuse's MCP server.
+            - name: CUSTODY_CHAT_ENABLED
+              value: {{ .Values.chat.enabled | quote }}
+            - name: CUSTODY_CHAT_MODEL
+              value: {{ .Values.chat.model | quote }}
             - name: CUSTODY_CHAT_API_KEY
               valueFrom:
                 secretKeyRef:
                   name: {{ .Values.judge.secretName }}
                   key: OPENROUTER_API_KEY
             - name: CUSTODY_CHAT_BASE_URL
-              value: {{ .Values.endpoints.judgeBaseUrl }}
+              value: {{ .Values.chat.baseUrl | default .Values.endpoints.judgeBaseUrl | quote }}
             - name: SUT_BASE_URL
               value: {{ .Values.endpoints.sutBaseUrl }}
             - name: TOOLS_BASE_URL
