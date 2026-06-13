@@ -178,8 +178,14 @@ nightlyEval:
   schedule: "0 6 * * *"
   # Scenario(s) to run nightly — single value; use CLI --scenario for multi
   scenario: A-baseline
-  modelId: claude-sonnet-4-6
-  benchmarksRepo: https://github.com/openteams/custody-benchmarks.git
+  modelId: openrouter/anthropic/claude-sonnet-4.6
+  # Cloned UNAUTHENTICATED at runtime by the fetch-benchmarks init container
+  # (api deployment + nightly CronJob) into /benchmarks — never baked into an
+  # image. The repo must therefore be PUBLIC (as the sibling mystic repos are);
+  # if it stays private, the clone fails and GET /scenarios returns empty.
+  # Correct repo is openteams-ai/mystic-custody-benchmarks (the previous
+  # openteams/custody-benchmarks URL does not exist).
+  benchmarksRepo: https://github.com/openteams-ai/mystic-custody-benchmarks.git
 
 # =============================================================================
 # Resources
