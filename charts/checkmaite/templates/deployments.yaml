@@ -65,6 +65,8 @@ spec:
             {{- end }}
             - name: LANGFUSE_HOST
               value: {{ .Values.langfuse.host }}
+            - name: LANGFUSE_PUBLIC_URL
+              value: {{ .Values.langfuse.publicUrl | default "https://langfuse.mystic.openteams.ai" | quote }}
             - name: LANGFUSE_PUBLIC_KEY
               valueFrom:
                 secretKeyRef:

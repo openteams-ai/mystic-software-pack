@@ -123,6 +123,9 @@ langfuse:
   # Cluster-provided Langfuse: the GitOps repo (openteams-ai/mystic.openteams.ai)
   # deploys nebari-langfuse-pack as release "langfuse" in namespace "langfuse".
   host: http://langfuse-web.langfuse.svc:3000
+  # Public URL for Langfuse (used by the browser / external callers).
+  # Defaults to https://langfuse.mystic.openteams.ai when not set.
+  publicUrl: ""
 
 # =============================================================================
 # Judge (hosted OpenRouter endpoint — contract §7)
