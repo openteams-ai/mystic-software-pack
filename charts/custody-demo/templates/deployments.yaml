@@ -95,7 +95,7 @@ spec:
               mountPath: /etc/litestream
       {{- end }}
       {{- end }}
-      {{- if eq $name "custody-tools" }}
+      {{- if hasPrefix "custody-tools" $name }}
       volumes:
         # Same writable video cache as the agent (tools_service/video.py
         # downloads and decodes mission clips from S3).
@@ -152,7 +152,7 @@ spec:
             - name: video-cache
               mountPath: /data/video-cache
           {{- end }}
-          {{- if eq $name "custody-tools" }}
+          {{- if hasPrefix "custody-tools" $name }}
           volumeMounts:
             - name: video-cache
               mountPath: /data/video-cache
