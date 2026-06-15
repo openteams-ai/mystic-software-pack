@@ -54,6 +54,11 @@ nebariapp:
     icon: ""
     category: "Mystic"
     priority: 20
+    healthCheck:
+      # -- Whether health checks are enabled
+      enabled: true
+      # -- The HTTP path to check for health status
+      path: /health
 
 # =============================================================================
 # Application images
