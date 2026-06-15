@@ -57,8 +57,12 @@ nebariapp:
     healthCheck:
       # -- Whether health checks are enabled
       enabled: true
-      # -- The HTTP path to check for health status
-      path: /health
+      # -- The HTTP path to check for health status. The landing page probes
+      # the in-cluster Service directly (nebariapp.service, the ui on :3000),
+      # so this must return 200 unauthenticated. /api/v1/health is the SPA's
+      # dedicated endpoint (proxies through to the api backend); it is already
+      # exposed as a publicRoute.
+      path: /api/v1/health
 
 # =============================================================================
 # Application images

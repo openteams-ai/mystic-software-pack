@@ -72,8 +72,11 @@ nebariapp:
       healthCheck:
         # -- Whether health checks are enabled
         enabled: true
-        # -- The HTTP path to check for health status
-        path: /health
+        # -- The HTTP path to check for health status. The landing page probes
+        # the custody-agent Service directly on :8080, so this must return 200
+        # unauthenticated. /healthz is the agent's dedicated endpoint, already
+        # exposed as a publicRoute.
+        path: /healthz
 
 # =============================================================================
 # Keycloak / OIDC runtime config (consumed by the custody-agent service)
