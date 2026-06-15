@@ -161,9 +161,10 @@ litestream:
 # GPU scheduling (for custody-tools when gpu=true)
 # =============================================================================
 gpu:
-  # gpu-small node group (g4dn.xlarge, T4 16 GB, scale-to-zero)
+  # Stable label registered by the NVIDIA device plugin. Avoid matching EKS
+  # nodegroup names because nebari-infrastructure-core adds generated suffixes.
   nodeSelector:
-    eks.amazonaws.com/nodegroup: gpu-small
+    nvidia.com/gpu.present: "true"
   tolerations:
     - key: nvidia.com/gpu
       operator: Equal

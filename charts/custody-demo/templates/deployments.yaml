@@ -21,10 +21,9 @@ metadata:
     app.kubernetes.io/managed-by: {{ $.Release.Service }}
     helm.sh/chart: {{ include "custody-demo.chart" $ }}
 spec:
-  {{- if and (eq $name "custody-agent") $.Values.artifacts $.Values.artifacts.persistentVolumeClaim $.Values.artifacts.persistentVolumeClaim.claimName }}
-  # A ReadWriteOnce PVC can attach to only one node at a time; the old pod must
-  # release it before the new pod mounts it. RollingUpdate would deadlock the
-  # ArgoCD sync on Multi-Attach. Recreate terminates the old pod first.
+  {{- if or (and (eq $name "custody-agent") $.Values.artifacts $.Values.artifacts.persistentVolumeClaim $.Values.artifacts.persistentVolumeClaim.claimName) $svc.gpu }}
+  # A ReadWriteOnce PVC and a single-GPU service both need the old pod to
+  # terminate before the replacement pod can schedule.
   strategy:
     type: Recreate
   {{- end }}
@@ -52,7 +51,11 @@ spec:
       {{- end }}
       {{- if $svc.gpu }}
       nodeSelector:
-        {{- toYaml $.Values.gpu.nodeSelector | nindent 8 }}
+        {{- range $key, $value := $.Values.gpu.nodeSelector }}
+        {{- if $value }}
+        {{ $key }}: {{ $value | quote }}
+        {{- end }}
+        {{- end }}
       tolerations:
         {{- toYaml $.Values.gpu.tolerations | nindent 8 }}
       {{- end }}
