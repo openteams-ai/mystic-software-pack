@@ -69,6 +69,11 @@ nebariapp:
       icon: ""
       category: "Mystic"
       priority: 10
+      healthCheck:
+        # -- Whether health checks are enabled
+        enabled: true
+        # -- The HTTP path to check for health status
+        path: /health
 
 # =============================================================================
 # Keycloak / OIDC runtime config (consumed by the custody-agent service)
