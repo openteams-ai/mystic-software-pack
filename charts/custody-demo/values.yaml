@@ -64,10 +64,10 @@ nebariapp:
     # https://<hostname>/mystic_depot_icon.svg when left empty.
     landingPage:
       enabled: true
-      displayName: "Mystic Depot"
+      displayName: "GeoInt Explorer"
       description: "GEOINT custody demo — agent, live mission UI, run artifacts"
       icon: ""
-      category: "Mystic"
+      category: "AI"
       priority: 10
       healthCheck:
         # -- Whether health checks are enabled
