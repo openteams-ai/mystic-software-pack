@@ -52,7 +52,7 @@ nebariapp:
     displayName: "Checkmaite"
     description: "Custody evaluation — runs, metrics, analytics"
     icon: ""
-    category: "Mystic"
+    category: "T&E"
     priority: 20
     healthCheck:
       # -- Whether health checks are enabled
