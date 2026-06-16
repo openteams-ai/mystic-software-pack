@@ -64,7 +64,7 @@ nebariapp:
     # https://<hostname>/mystic_depot_icon.svg when left empty.
     landingPage:
       enabled: true
-      displayName: "GeoInt Explorer"
+      displayName: "GEOINT Explorer"
       description: "GEOINT custody demo — agent, live mission UI, run artifacts"
       icon: ""
       category: "AI"
