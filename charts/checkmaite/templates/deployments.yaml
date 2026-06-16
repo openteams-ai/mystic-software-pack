@@ -37,6 +37,23 @@ spec:
       # Scenarios + rubrics are baked into the api image at /benchmarks
       # (CUSTODY_SCENARIOS_DIR / CUSTODY_RUBRICS_DIR image defaults), so no
       # fetch-benchmarks init container is needed. Storage strategy: plugin #19.
+      initContainers:
+        # GT files are required for deterministic GT-backed scoring in live UI
+        # runs. Keep this in sync with the nightly smoke eval's GT bootstrap.
+        - name: fetch-gt
+          image: amazon/aws-cli:2.17.0
+          args:
+            - s3
+            - sync
+            - s3://{{ .Values.s3.bucket }}/seadronessee
+            - /data/gt/seadronessee
+            - --exclude
+            - "*"
+            - --include
+            - "*.gt.txt"
+          volumeMounts:
+            - name: gt-data
+              mountPath: /data/gt
       containers:
         - name: api
           image: "{{ required "images.api.repository is required" .Values.images.api.repository }}:{{ .Values.images.api.tag }}"
@@ -110,6 +127,8 @@ spec:
             # the image already defaults CUSTODY_SCENARIOS_DIR to it).
             - name: CUSTODY_SCENARIOS_DIR
               value: /benchmarks/scenarios
+            - name: CUSTODY_GT_ROOT
+              value: /data/gt
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
               value: {{ .Values.endpoints.otelExporterOtlpEndpoint }}
             - name: CUSTODY_DATA_BUCKET
@@ -127,10 +146,15 @@ spec:
           volumeMounts:
             - name: analytics
               mountPath: {{ .Values.analytics.mountPath }}
+            - name: gt-data
+              mountPath: /data/gt
+              readOnly: true
       volumes:
         - name: analytics
           persistentVolumeClaim:
             claimName: checkmaite-analytics
+        - name: gt-data
+          emptyDir: {}
 ---
 apiVersion: apps/v1
 kind: Deployment

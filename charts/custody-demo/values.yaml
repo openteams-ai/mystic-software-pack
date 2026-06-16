@@ -226,6 +226,11 @@ services:
         # auth so internal callers (checkmaite-api, eval CLI) can reach the
         # agent without a token. External access stays gateway-protected.
         value: "1"
+      - name: CUSTODY_MAX_TOOL_ITERATIONS
+        # B/D/F need enough budget to reach their loss/cue/perturbation frames.
+        # The agent code default is 40; pin it here so live deployments do not
+        # accidentally cap out at 12 and finish before scenario stressors.
+        value: "40"
     resources:
       requests:
         cpu: 250m

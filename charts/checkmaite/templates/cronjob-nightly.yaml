@@ -80,7 +80,7 @@ spec:
                 - --rubrics-dir
                 - /benchmarks/rubrics
                 - --gt-root
-                - /data/gt/seadronessee
+                - /data/gt
                 - --out
                 - {{ .Values.analytics.mountPath }}
               env:
@@ -115,7 +115,7 @@ spec:
                       name: {{ .Values.judge.secretName }}
                       key: OPENROUTER_API_KEY
                 - name: CUSTODY_GT_ROOT
-                  value: /data/gt/seadronessee
+                  value: /data/gt
               volumeMounts:
                 - name: analytics
                   mountPath: {{ .Values.analytics.mountPath }}

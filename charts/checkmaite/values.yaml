@@ -157,7 +157,7 @@ chat:
   enabled: true
   # OpenAI-compatible model slug for the chat agent (must be a strong
   # tool-caller). Default goes through OpenRouter.
-  model: anthropic/claude-sonnet-4.6
+  model: openai/gpt-5.4
   # Optional override for the model endpoint (e.g. a self-hosted vLLM). When
   # empty the agent uses OpenRouter.
   baseUrl: ""
@@ -186,8 +186,9 @@ nightlyEval:
   schedule: "0 6 * * *"
   # Scenario(s) to run nightly — single value; use CLI --scenario for multi
   scenario: A-baseline
-  # OpenRouter-routed model id (the deployment is OpenRouter-only).
-  modelId: openrouter/anthropic/claude-sonnet-4.6
+  # OpenRouter-routed model id. Keep this vision-capable for custody evals
+  # because inspect_crop depends on image input.
+  modelId: openrouter/openai/gpt-5.4
   # NOTE: no benchmarksRepo — scenarios/rubrics are baked into the api image
   # (used by the CronJob); GT still syncs from S3 in the fetch-gt init container.
 
