@@ -2,7 +2,7 @@ custody-demo has been deployed (release: {{ .Release.Name }}).
 
 Services (all ClusterIP, cluster-internal):
   custody-agent       port 8080  — SUT HTTP contract (POST /v1/custody/run, GET /v1/custody/runs/{id}); also serves the React demo UI same-origin
-  custody-tools       port 8090  — frame sampling, detection+tracking, cue lookup (GPU when gpu=true)
+  custody-tools*      port 8090  — frame sampling, detection+tracking, cue lookup (GPU when gpu=true; shard services supported)
   custody-fault-proxy port 8085  — forwards to custody-tools, applies FaultProfile per run
 
 {{- if .Values.nebariapp.enabled }}
