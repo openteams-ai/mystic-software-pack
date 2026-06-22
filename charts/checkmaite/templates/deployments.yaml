@@ -124,6 +124,28 @@ spec:
               value: {{ .Values.workerJobs.ttlSecondsAfterFinished | default 86400 | quote }}
             - name: CUSTODY_WORKER_BACKOFF_LIMIT
               value: {{ .Values.workerJobs.backoffLimit | default 0 | quote }}
+            - name: CUSTODY_WORKER_MAX_CONCURRENT_JOBS
+              value: {{ .Values.workerJobs.maxConcurrentJobs | default 0 | quote }}
+            {{- with .Values.workerJobs.resources.requests }}
+            {{- with .cpu }}
+            - name: CUSTODY_WORKER_CPU_REQUEST
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .memory }}
+            - name: CUSTODY_WORKER_MEMORY_REQUEST
+              value: {{ . | quote }}
+            {{- end }}
+            {{- end }}
+            {{- with .Values.workerJobs.resources.limits }}
+            {{- with .cpu }}
+            - name: CUSTODY_WORKER_CPU_LIMIT
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .memory }}
+            - name: CUSTODY_WORKER_MEMORY_LIMIT
+              value: {{ . | quote }}
+            {{- end }}
+            {{- end }}
             - name: CUSTODY_ANALYTICS_CLAIM
               value: checkmaite-analytics
             - name: CUSTODY_LANGFUSE_SECRET_NAME

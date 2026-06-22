@@ -136,6 +136,17 @@ workerJobs:
   enabled: false
   ttlSecondsAfterFinished: 86400
   backoffLimit: 0
+  # 0 disables the scheduler-side cap. Set a positive value to reject launch
+  # requests that would exceed the number of active worker Jobs the cluster is
+  # sized to run safely.
+  maxConcurrentJobs: 0
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: "2"
+      memory: 4Gi
 
 # =============================================================================
 # Keycloak / OIDC runtime config (consumed by the workflow-builder api)
