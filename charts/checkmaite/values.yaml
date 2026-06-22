@@ -118,6 +118,13 @@ scenarioCatalog:
     depth: 1
     mountPath: /benchmarks-git
     link: current
+    auth:
+      # Existing K8s Secret with HTTPS git credentials. Leave empty for public
+      # benchmark repos. For GitHub PAT auth, username can be x-access-token
+      # and token is the PAT value.
+      existingSecret: ""
+      usernameKey: username
+      tokenKey: token
 
 # =============================================================================
 # Keycloak / OIDC runtime config (consumed by the workflow-builder api)

@@ -16,6 +16,8 @@
 {{- $scenarioCatalog := .Values.scenarioCatalog | default dict -}}
 {{- $gitSync := $scenarioCatalog.gitSync | default dict -}}
 {{- $gitSyncEnabled := $gitSync.enabled | default false -}}
+{{- $gitSyncAuth := $gitSync.auth | default dict -}}
+{{- $gitSyncAuthSecret := $gitSyncAuth.existingSecret | default "" -}}
 {{- $benchmarksRoot := $scenarioCatalog.bakedPath | default "/benchmarks" -}}
 {{- if $gitSyncEnabled -}}
 {{- $benchmarksRoot = printf "%s/%s" ($gitSync.mountPath | default "/benchmarks-git") ($gitSync.link | default "current") -}}
@@ -61,9 +63,23 @@ spec:
               value: {{ $gitSync.depth | default 1 | quote }}
             - name: GITSYNC_ONE_TIME
               value: "true"
+            {{- if $gitSyncAuthSecret }}
+            - name: GITSYNC_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $gitSyncAuthSecret | quote }}
+                  key: {{ $gitSyncAuth.usernameKey | default "username" | quote }}
+            - name: GITSYNC_PASSWORD_FILE
+              value: /etc/git-secret/token
+            {{- end }}
           volumeMounts:
             - name: benchmarks-git
               mountPath: {{ $gitSync.mountPath | default "/benchmarks-git" }}
+            {{- if $gitSyncAuthSecret }}
+            - name: benchmarks-git-credentials
+              mountPath: /etc/git-secret
+              readOnly: true
+            {{- end }}
         {{- end }}
         # GT files are required for deterministic GT-backed scoring in live UI
         # runs. Keep this in sync with the nightly smoke eval's GT bootstrap.
@@ -209,9 +225,23 @@ spec:
               value: {{ $gitSync.period | default "30s" | quote }}
             - name: GITSYNC_DEPTH
               value: {{ $gitSync.depth | default 1 | quote }}
+            {{- if $gitSyncAuthSecret }}
+            - name: GITSYNC_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $gitSyncAuthSecret | quote }}
+                  key: {{ $gitSyncAuth.usernameKey | default "username" | quote }}
+            - name: GITSYNC_PASSWORD_FILE
+              value: /etc/git-secret/token
+            {{- end }}
           volumeMounts:
             - name: benchmarks-git
               mountPath: {{ $gitSync.mountPath | default "/benchmarks-git" }}
+            {{- if $gitSyncAuthSecret }}
+            - name: benchmarks-git-credentials
+              mountPath: /etc/git-secret
+              readOnly: true
+            {{- end }}
         {{- end }}
       volumes:
         - name: analytics
@@ -222,6 +252,14 @@ spec:
         {{- if $gitSyncEnabled }}
         - name: benchmarks-git
           emptyDir: {}
+        {{- end }}
+        {{- if $gitSyncAuthSecret }}
+        - name: benchmarks-git-credentials
+          secret:
+            secretName: {{ $gitSyncAuthSecret | quote }}
+            items:
+              - key: {{ $gitSyncAuth.tokenKey | default "token" | quote }}
+                path: token
         {{- end }}
 ---
 apiVersion: apps/v1
