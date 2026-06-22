@@ -102,6 +102,24 @@ analytics:
   mountPath: /data/analytics
 
 # =============================================================================
+# Scenario catalog
+# =============================================================================
+# By default the API uses scenarios/rubrics baked into its image at /benchmarks.
+# Enable gitSync to mount a live benchmark checkout so YAML changes pushed to
+# git appear in the UI without rebuilding the API image.
+scenarioCatalog:
+  bakedPath: /benchmarks
+  gitSync:
+    enabled: false
+    image: registry.k8s.io/git-sync/git-sync:v4.4.0
+    repo: https://github.com/openteams-ai/mystic-custody-benchmarks.git
+    ref: main
+    period: 30s
+    depth: 1
+    mountPath: /benchmarks-git
+    link: current
+
+# =============================================================================
 # Keycloak / OIDC runtime config (consumed by the workflow-builder api)
 # =============================================================================
 # The api serves /config.json to the SPA from CUSTODY_OIDC_* env vars (nginx

@@ -13,6 +13,13 @@
           nginx proxies /api/ to http://api:8000 (baked into the image), so
           the api Service below must keep that exact name.
 */}}
+{{- $scenarioCatalog := .Values.scenarioCatalog | default dict -}}
+{{- $gitSync := $scenarioCatalog.gitSync | default dict -}}
+{{- $gitSyncEnabled := $gitSync.enabled | default false -}}
+{{- $benchmarksRoot := $scenarioCatalog.bakedPath | default "/benchmarks" -}}
+{{- if $gitSyncEnabled -}}
+{{- $benchmarksRoot = printf "%s/%s" ($gitSync.mountPath | default "/benchmarks-git") ($gitSync.link | default "current") -}}
+{{- end -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -38,6 +45,26 @@ spec:
       # (CUSTODY_SCENARIOS_DIR / CUSTODY_RUBRICS_DIR image defaults), so no
       # fetch-benchmarks init container is needed. Storage strategy: plugin #19.
       initContainers:
+        {{- if $gitSyncEnabled }}
+        - name: sync-benchmarks-once
+          image: {{ $gitSync.image | default "registry.k8s.io/git-sync/git-sync:v4.4.0" | quote }}
+          env:
+            - name: GITSYNC_REPO
+              value: {{ required "scenarioCatalog.gitSync.repo is required when gitSync.enabled=true" $gitSync.repo | quote }}
+            - name: GITSYNC_REF
+              value: {{ $gitSync.ref | default "main" | quote }}
+            - name: GITSYNC_ROOT
+              value: {{ $gitSync.mountPath | default "/benchmarks-git" | quote }}
+            - name: GITSYNC_LINK
+              value: {{ $gitSync.link | default "current" | quote }}
+            - name: GITSYNC_DEPTH
+              value: {{ $gitSync.depth | default 1 | quote }}
+            - name: GITSYNC_ONE_TIME
+              value: "true"
+          volumeMounts:
+            - name: benchmarks-git
+              mountPath: {{ $gitSync.mountPath | default "/benchmarks-git" }}
+        {{- end }}
         # GT files are required for deterministic GT-backed scoring in live UI
         # runs. Keep this in sync with the nightly smoke eval's GT bootstrap.
         - name: fetch-gt
@@ -123,10 +150,22 @@ spec:
             - name: TOOLS_BASE_URL
               value: {{ .Values.endpoints.toolsBaseUrl }}
             # Scenario catalog dir for GET /api/v1/scenarios + POST /api/v1/runs
-            # — baked into the api image (this just pins the path explicitly;
-            # the image already defaults CUSTODY_SCENARIOS_DIR to it).
+            # — baked into the api image by default, or backed by git-sync when
+            # scenarioCatalog.gitSync.enabled=true.
             - name: CUSTODY_SCENARIOS_DIR
-              value: /benchmarks/scenarios
+              value: {{ printf "%s/scenarios" $benchmarksRoot | quote }}
+            - name: CUSTODY_RUBRICS_DIR
+              value: {{ printf "%s/rubrics" $benchmarksRoot | quote }}
+            - name: CUSTODY_BENCHMARKS_DIR
+              value: {{ $benchmarksRoot | quote }}
+            - name: CUSTODY_BENCHMARKS_GIT_SYNC_ENABLED
+              value: {{ $gitSyncEnabled | quote }}
+            {{- if $gitSyncEnabled }}
+            - name: CUSTODY_BENCHMARKS_REPO
+              value: {{ $gitSync.repo | quote }}
+            - name: CUSTODY_BENCHMARKS_REF
+              value: {{ $gitSync.ref | default "main" | quote }}
+            {{- end }}
             - name: CUSTODY_GT_ROOT
               value: /data/gt
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
@@ -149,12 +188,41 @@ spec:
             - name: gt-data
               mountPath: /data/gt
               readOnly: true
+            {{- if $gitSyncEnabled }}
+            - name: benchmarks-git
+              mountPath: {{ $gitSync.mountPath | default "/benchmarks-git" }}
+              readOnly: true
+            {{- end }}
+        {{- if $gitSyncEnabled }}
+        - name: sync-benchmarks
+          image: {{ $gitSync.image | default "registry.k8s.io/git-sync/git-sync:v4.4.0" | quote }}
+          env:
+            - name: GITSYNC_REPO
+              value: {{ $gitSync.repo | quote }}
+            - name: GITSYNC_REF
+              value: {{ $gitSync.ref | default "main" | quote }}
+            - name: GITSYNC_ROOT
+              value: {{ $gitSync.mountPath | default "/benchmarks-git" | quote }}
+            - name: GITSYNC_LINK
+              value: {{ $gitSync.link | default "current" | quote }}
+            - name: GITSYNC_PERIOD
+              value: {{ $gitSync.period | default "30s" | quote }}
+            - name: GITSYNC_DEPTH
+              value: {{ $gitSync.depth | default 1 | quote }}
+          volumeMounts:
+            - name: benchmarks-git
+              mountPath: {{ $gitSync.mountPath | default "/benchmarks-git" }}
+        {{- end }}
       volumes:
         - name: analytics
           persistentVolumeClaim:
             claimName: checkmaite-analytics
         - name: gt-data
           emptyDir: {}
+        {{- if $gitSyncEnabled }}
+        - name: benchmarks-git
+          emptyDir: {}
+        {{- end }}
 ---
 apiVersion: apps/v1
 kind: Deployment
