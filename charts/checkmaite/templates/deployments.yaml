@@ -108,6 +108,28 @@ spec:
           env:
             - name: CUSTODY_DATA_DIR
               value: {{ .Values.analytics.mountPath }}
+            - name: CUSTODY_EVAL_DB
+              value: {{ printf "%s/eval.db" .Values.analytics.mountPath | quote }}
+            - name: CUSTODY_RUN_EVENTS_DB
+              value: {{ printf "%s/run_events.db" .Values.analytics.mountPath | quote }}
+            - name: CUSTODY_WORKER_JOBS_ENABLED
+              value: {{ .Values.workerJobs.enabled | default false | quote }}
+            - name: CUSTODY_WORKER_IMAGE
+              value: "{{ required "images.api.repository is required" .Values.images.api.repository }}:{{ .Values.images.api.tag }}"
+            - name: CUSTODY_WORKER_IMAGE_PULL_POLICY
+              value: {{ .Values.images.api.pullPolicy | quote }}
+            - name: CUSTODY_WORKER_SERVICE_ACCOUNT
+              value: {{ .Values.serviceAccount.name | quote }}
+            - name: CUSTODY_WORKER_JOB_TTL_SECONDS
+              value: {{ .Values.workerJobs.ttlSecondsAfterFinished | default 86400 | quote }}
+            - name: CUSTODY_WORKER_BACKOFF_LIMIT
+              value: {{ .Values.workerJobs.backoffLimit | default 0 | quote }}
+            - name: CUSTODY_ANALYTICS_CLAIM
+              value: checkmaite-analytics
+            - name: CUSTODY_LANGFUSE_SECRET_NAME
+              value: {{ .Values.langfuse.secretName | quote }}
+            - name: CUSTODY_JUDGE_SECRET_NAME
+              value: {{ .Values.judge.secretName | quote }}
             {{- if and .Values.nebariapp.enabled ((.Values.nebariapp.auth).enabled) }}
             {{- $kc := .Values.keycloak }}
             {{- /* Served to the SPA via /config.json (api /api/v1/config.json) */}}
@@ -181,6 +203,22 @@ spec:
               value: {{ $gitSync.repo | quote }}
             - name: CUSTODY_BENCHMARKS_REF
               value: {{ $gitSync.ref | default "main" | quote }}
+            - name: CUSTODY_BENCHMARKS_GIT_SYNC_IMAGE
+              value: {{ $gitSync.image | default "registry.k8s.io/git-sync/git-sync:v4.4.0" | quote }}
+            - name: CUSTODY_BENCHMARKS_GIT_ROOT
+              value: {{ $gitSync.mountPath | default "/benchmarks-git" | quote }}
+            - name: CUSTODY_BENCHMARKS_GIT_LINK
+              value: {{ $gitSync.link | default "current" | quote }}
+            - name: CUSTODY_BENCHMARKS_GIT_DEPTH
+              value: {{ $gitSync.depth | default 1 | quote }}
+            {{- if $gitSyncAuthSecret }}
+            - name: CUSTODY_BENCHMARKS_GIT_AUTH_SECRET
+              value: {{ $gitSyncAuthSecret | quote }}
+            - name: CUSTODY_BENCHMARKS_GIT_USERNAME_KEY
+              value: {{ $gitSyncAuth.usernameKey | default "username" | quote }}
+            - name: CUSTODY_BENCHMARKS_GIT_TOKEN_KEY
+              value: {{ $gitSyncAuth.tokenKey | default "token" | quote }}
+            {{- end }}
             {{- end }}
             - name: CUSTODY_GT_ROOT
               value: /data/gt
