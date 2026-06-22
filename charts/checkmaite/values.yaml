@@ -127,6 +127,17 @@ scenarioCatalog:
       tokenKey: token
 
 # =============================================================================
+# Evaluation worker Jobs
+# =============================================================================
+# When enabled, UI-launched eval runs are scheduled as one Kubernetes Job per
+# scenario/model/repetition instead of running inside the API pod. This keeps
+# active evals alive across API/UI Deployment rollouts.
+workerJobs:
+  enabled: false
+  ttlSecondsAfterFinished: 86400
+  backoffLimit: 0
+
+# =============================================================================
 # Keycloak / OIDC runtime config (consumed by the workflow-builder api)
 # =============================================================================
 # The api serves /config.json to the SPA from CUSTODY_OIDC_* env vars (nginx
